@@ -1,6 +1,26 @@
 (function () {
-    const base = window.location.pathname.split("/").slice(0, 3).join("/");
-    window.SR_BASE = base;
+    const p = window.location.pathname;
+
+
+    function getBasePath(pathname) {
+        const publicIdx = pathname.indexOf("/public/");
+        if (publicIdx !== -1) {
+            return pathname.slice(0, publicIdx);
+        }
+
+        const parts = pathname.split("/").filter(Boolean);
+        if (parts.length === 0) return "";
+
+        const last = parts[parts.length - 1];
+        if (last === "login" || last === "dashboard" || last === "config") {
+            return "/" + parts.slice(0, -1).join("/");
+        }
+
+
+        return "/" + parts[0];
+    }
+
+    window.SR_BASE = getBasePath(p);
 
     window.srFetch = async function (path, opts) {
         const res = await fetch(`${window.SR_BASE}${path}`, Object.assign({
