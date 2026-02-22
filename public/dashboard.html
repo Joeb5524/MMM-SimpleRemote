@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Mirror Remote Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.3/css/bulma.min.css">
+    <link rel="stylesheet" href="./app.css">
+</head>
+<body class="sr-bg">
+<section class="section">
+    <div class="container">
+        <nav class="level mb-5">
+            <div class="level-left">
+                <div class="level-item">
+                    <h1 class="title is-4">Mirror Remote</h1>
+                </div>
+            </div>
+            <div class="level-right">
+                <div class="level-item">
+                    <a class="button is-light" href="../config">Config editor</a>
+                </div>
+                <div class="level-item">
+                    <button id="logout" class="button is-light">Logout</button>
+                </div>
+            </div>
+        </nav>
+
+        <div class="columns">
+            <div class="column is-5">
+                <div class="box sr-box">
+                    <h2 class="title is-5">Send alert</h2>
+
+                    <div class="field">
+                        <label class="label">Title</label>
+                        <div class="control">
+                            <input id="title" class="input" type="text" placeholder="Medication reminder">
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label class="label">Message</label>
+                        <div class="control">
+                            <textarea id="message" class="textarea" rows="6" placeholder="Type the alert text..."></textarea>
+                        </div>
+                    </div>
+
+                    <button id="send" class="button is-link is-fullwidth">Send to mirror</button>
+
+                    <p id="sent" class="has-text-success mt-3" style="display:none;">Sent.</p>
+                    <p id="sendErr" class="has-text-danger mt-3" style="display:none;">Failed.</p>
+                </div>
+            </div>
+
+            <div class="column">
+                <div class="box sr-box">
+                    <div class="level">
+                        <div class="level-left">
+                            <h2 class="title is-5 level-item">Queue</h2>
+                        </div>
+                        <div class="level-right">
+                            <button id="clear" class="button is-danger is-light level-item">Clear all</button>
+                        </div>
+                    </div>
+
+                    <div id="queue"></div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</section>
+
+<script src="./app.js"></script>
+<script src="./dashboard.js"></script>
+</body>
+</html>

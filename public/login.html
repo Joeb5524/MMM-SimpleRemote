@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Mirror Remote Login</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.3/css/bulma.min.css">
+    <link rel="stylesheet" href="./app.css">
+</head>
+<body class="sr-bg">
+<section class="section">
+    <div class="container" style="max-width:420px;">
+        <div class="box sr-box">
+            <h1 class="title is-4">Mirror Remote</h1>
+            <p class="mb-4">Sign in to manage alerts and config.</p>
+
+            <div class="field">
+                <label class="label">Username</label>
+                <div class="control">
+                    <input id="username" class="input" type="text" autocomplete="username">
+                </div>
+            </div>
+
+            <div class="field">
+                <label class="label">Password</label>
+                <div class="control">
+                    <input id="password" class="input" type="password" autocomplete="current-password">
+                </div>
+            </div>
+
+            <p id="err" class="has-text-danger mb-3" style="display:none;">Login failed.</p>
+
+            <button id="btn" class="button is-link is-fullwidth">Sign in</button>
+        </div>
+    </div>
+</section>
+
+<script src="./app.js"></script>
+<script src="./login.js"></script>
+</body>
+</html>

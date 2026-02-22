@@ -1,0 +1,37 @@
+.sr-root {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+}
+
+.sr-card {
+    width: min(900px, 92vw);
+    padding: 28px;
+    border-radius: 18px;
+    background: rgba(0, 0, 0, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+}
+
+.sr-title {
+    font-size: 44px;
+    font-weight: 700;
+    line-height: 1.1;
+    margin-bottom: 14px;
+}
+
+.sr-body {
+    font-size: 30px;
+    line-height: 1.25;
+    white-space: pre-wrap;
+}
+
+.sr-meta {
+    margin-top: 18px;
+    font-size: 18px;
+    opacity: 0.75;
+}

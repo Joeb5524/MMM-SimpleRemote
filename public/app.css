@@ -1,0 +1,74 @@
+.sr-bg {
+    background: #0f1115;
+    min-height: 100vh;
+}
+
+.sr-box {
+    border-radius: 16px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #e8eaf0;
+}
+
+.sr-box .title,
+.sr-box .label,
+.sr-box p,
+.sr-box .help,
+.sr-box pre {
+    color: #e8eaf0;
+}
+
+textarea, input {
+    background: rgba(0,0,0,0.25) !important;
+    color: #e8eaf0 !important;
+    border-color: rgba(255,255,255,0.12) !important;
+}
+
+.button.is-light {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.12);
+    color: #e8eaf0;
+}
+
+a.button.is-light {
+    color: #e8eaf0;
+}
+
+.sr-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(0,0,0,0.18);
+    margin-bottom: 10px;
+}
+
+.sr-row-title {
+    font-weight: 700;
+}
+
+.sr-row-msg {
+    opacity: 0.9;
+    white-space: pre-wrap;
+}
+
+.sr-chip {
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+.sr-mod {
+    cursor: pointer;
+    padding: 10px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(0,0,0,0.18);
+    margin-bottom: 10px;
+}
+
+.sr-mod:hover {
+    background: rgba(0,0,0,0.28);
+}

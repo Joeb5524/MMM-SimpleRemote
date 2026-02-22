@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "medications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "dose": { "type": "string" },
+          "times": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  }
+}

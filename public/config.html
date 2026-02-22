@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Config Editor</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.3/css/bulma.min.css">
+    <link rel="stylesheet" href="./app.css">
+</head>
+<body class="sr-bg">
+<section class="section">
+    <div class="container">
+        <nav class="level mb-5">
+            <div class="level-left">
+                <div class="level-item">
+                    <h1 class="title is-4">Config editor</h1>
+                </div>
+            </div>
+            <div class="level-right">
+                <div class="level-item">
+                    <a class="button is-light" href="../dashboard">Dashboard</a>
+                </div>
+                <div class="level-item">
+                    <button id="logout" class="button is-light">Logout</button>
+                </div>
+            </div>
+        </nav>
+
+        <div class="columns">
+            <div class="column is-4">
+                <div class="box sr-box">
+                    <h2 class="title is-6">Modules</h2>
+                    <div id="modules"></div>
+                </div>
+            </div>
+
+            <div class="column">
+                <div class="box sr-box">
+                    <h2 id="pickedTitle" class="title is-6">Select a module</h2>
+
+                    <div class="field">
+                        <label class="label">Config JSON</label>
+                        <div class="control">
+                            <textarea id="json" class="textarea" rows="16" placeholder="Module config will appear here..."></textarea>
+                        </div>
+                        <p class="help">Edits are applied using a JSON patch against the module config object.</p>
+                    </div>
+
+                    <div class="buttons">
+                        <button id="load" class="button is-light" disabled>Reload</button>
+                        <button id="save" class="button is-link" disabled>Apply & refresh</button>
+                    </div>
+
+                    <p id="ok" class="has-text-success" style="display:none;">Saved.</p>
+                    <p id="bad" class="has-text-danger" style="display:none;">Failed to save.</p>
+                    <pre id="details" class="mt-3" style="display:none;"></pre>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</section>
+
+<script src="./app.js"></script>
+<script src="./config.js"></script>
+</body>
+</html>
