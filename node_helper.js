@@ -70,7 +70,7 @@ module.exports = NodeHelper.create({
             }
         }));
 
-        app.use(`${this.basePath}/public`, this._static(path.join(__dirname, "public")));
+        app.use(`${this.basePath}`, this._static(path.join(__dirname, "public")));
 
         app.get(`${this.basePath}`, (req, res) => {
             if (!this._isAuthed(req)) return res.redirect(`${this.basePath}/login`);
