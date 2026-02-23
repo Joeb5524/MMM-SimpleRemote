@@ -23,13 +23,12 @@ document.getElementById("save").onclick = async () => {
         return;
     }
 
-    const patch = diffToReplacePatch(nextConfig);
     const res = await window.srFetch("/api/config/module", {
         method: "PATCH",
         body: JSON.stringify({
             name: picked.module,
             index: picked.index,
-            patch
+            config: nextConfig
         })
     });
 
@@ -73,11 +72,6 @@ async function loadPicked() {
         return;
     }
     document.getElementById("json").value = JSON.stringify(res.json.config || {}, null, 2);
-}
-
-function diffToReplacePatch(nextConfig) {
-
-    return [{ op: "replace", path: "", value: nextConfig }];
 }
 
 function hideMsg() {

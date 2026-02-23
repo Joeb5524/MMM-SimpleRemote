@@ -31,7 +31,6 @@ module.exports = NodeHelper.create({
                 this.basePath = payload.basePath.startsWith("/") ? payload.basePath : `/${payload.basePath}`;
             }
             if (payload && Number.isFinite(payload.maxQueue)) this.maxQueue = payload.maxQueue;
-
             return;
         }
 
@@ -40,7 +39,6 @@ module.exports = NodeHelper.create({
             this.activeUntil = 0;
             this._broadcastActive();
             this._tickQueue();
-            return;
         }
     },
 
@@ -54,7 +52,6 @@ module.exports = NodeHelper.create({
 
         const sessionSecret = process.env.SR_SESSION_SECRET;
         if (!sessionSecret || sessionSecret.length < 24) {
-            // Simple warning only. The module will still run.
             console.warn("[MMM-SimpleRemote] SR_SESSION_SECRET is missing or too short.");
         }
 
@@ -69,6 +66,7 @@ module.exports = NodeHelper.create({
                 secure: true
             }
         }));
+
 
         app.use(`${this.basePath}`, this._static(path.join(__dirname, "public")));
 
@@ -138,11 +136,13 @@ module.exports = NodeHelper.create({
             const id = String(req.params.id || "");
             const before = this.queue.length;
             this.queue = this.queue.filter(a => a.id !== id);
+
             if (this.active && this.active.id === id) {
                 this.active = null;
                 this.activeUntil = 0;
                 this._broadcastActive();
             }
+
             if (this.queue.length !== before) this._saveAlerts();
             this._broadcastSync();
             res.json({ ok: true });
@@ -159,10 +159,10 @@ module.exports = NodeHelper.create({
             res.json({ ok: true });
         });
 
-        // Config API
+        // Config API: list modules
         app.get(`${this.basePath}/api/config/modules`, this._requireAuth.bind(this), (req, res) => {
             try {
-                const cfg = this._loadConfigObject();
+                const cfg = this._loadConfigObject(true);
                 const list = (cfg.modules || []).map((m, idx) => ({
                     index: idx,
                     module: m && m.module ? m.module : null,
@@ -176,28 +176,33 @@ module.exports = NodeHelper.create({
             }
         });
 
+        // Config API: read one module config
         app.get(`${this.basePath}/api/config/module`, this._requireAuth.bind(this), (req, res) => {
             const moduleName = String(req.query.name || "");
             const index = Number(req.query.index);
 
             try {
-                const cfg = this._loadConfigObject();
-                const entry = this._findModuleEntry(cfg, moduleName, index);
-                if (!entry) return res.status(404).json({ ok: false, error: "Module not found" });
+                const cfg = this._loadConfigObject(true);
+                const idx = this._findModuleIndex(cfg, moduleName, index);
+                if (idx === -1) return res.status(404).json({ ok: false, error: "Module not found" });
 
-                res.json({ ok: true, module: entry.module, index: entry._index, config: entry.config || {} });
+                const mod = cfg.modules[idx];
+                res.json({ ok: true, module: mod.module, index: idx, config: mod.config || {} });
             } catch (e) {
                 res.status(500).json({ ok: false, error: "Failed to read config.js" });
             }
         });
 
+
         app.patch(`${this.basePath}/api/config/module`, this._requireAuth.bind(this), this._jsonBody(), (req, res) => {
             const moduleName = this._cleanText(req.body && req.body.name, 80);
             const index = Number(req.body && req.body.index);
-            const patch = req.body && req.body.patch;
+            const newConfig = req.body && req.body.config;
 
             if (!moduleName) return res.status(400).json({ ok: false, error: "Missing module name" });
-            if (!Array.isArray(patch)) return res.status(400).json({ ok: false, error: "Patch must be an array" });
+            if (!newConfig || typeof newConfig !== "object" || Array.isArray(newConfig)) {
+                return res.status(400).json({ ok: false, error: "config must be an object" });
+            }
 
             const configPath = this._magicMirrorConfigPath();
             const backupPath = `${configPath}.bak`;
@@ -206,29 +211,19 @@ module.exports = NodeHelper.create({
                 this._backupFile(configPath, backupPath);
 
                 const cfg = this._loadConfigObject(true);
-                const entry = this._findModuleEntry(cfg, moduleName, index);
-                if (!entry) return res.status(404).json({ ok: false, error: "Module not found" });
+                const idx = this._findModuleIndex(cfg, moduleName, index);
+                if (idx === -1) return res.status(404).json({ ok: false, error: "Module not found" });
 
-                const before = JSON.parse(JSON.stringify(entry.config || {}));
-                const target = entry.config || {};
-
-                try {
-                    jsonpatch.applyPatch(target, patch, true, false);
-                } catch (e) {
-                    return res.status(400).json({ ok: false, error: "Invalid patch" });
-                }
-
-                const schemaResult = this._validateSchema(moduleName, target);
+                const schemaResult = this._validateSchema(moduleName, newConfig);
                 if (!schemaResult.ok) {
-                    entry.config = before;
                     this._restoreFile(backupPath, configPath);
                     return res.status(422).json({ ok: false, error: "Schema validation failed", details: schemaResult.errors });
                 }
 
-                entry.config = target;
+                cfg.modules[idx].config = newConfig;
 
                 this._writeConfigObject(cfg);
-                this._broadcastConfigUpdated(moduleName, entry._index);
+                this._broadcastConfigUpdated(moduleName, idx);
 
                 res.json({ ok: true });
             } catch (e) {
@@ -237,8 +232,7 @@ module.exports = NodeHelper.create({
             }
         });
 
-        // External public endpoint
-
+        // optional
         app.post(`${this.basePath}/api/external/alert`, this._jsonBody(), (req, res) => {
             const key = process.env.SR_EXTERNAL_KEY;
             if (!key) return res.status(403).json({ ok: false });
@@ -273,10 +267,39 @@ module.exports = NodeHelper.create({
     },
 
     _checkLogin(username, password) {
+        const u = String(username || "");
+
+        // Built-in test user
+        // Username: test
+        // Password: test
+        // Disable by setting SR_DISABLE_TEST_USER=1
+        if (process.env.SR_DISABLE_TEST_USER !== "1") {
+            if (u === "test") {
+                const testHash = "$2b$10$I7XxzN1YYKIKn5USWhZWBOVpNb3eo.r0MxpTUs/6q6RqKXTpDFC96";
+                return bcrypt.compareSync(password, testHash);
+            }
+        }
+
+        // Multi-user list from env
+        const usersJson = process.env.SR_USERS_JSON;
+        if (usersJson) {
+            try {
+                const users = JSON.parse(usersJson);
+                if (Array.isArray(users)) {
+                    const match = users.find(x => x && x.username === u && typeof x.passHash === "string");
+                    if (!match) return false;
+                    return bcrypt.compareSync(password, match.passHash);
+                }
+            } catch (_) {
+                return false;
+            }
+        }
+
+        // Single admin fallback
         const expectedUser = process.env.SR_ADMIN_USER || "";
         const passHash = process.env.SR_ADMIN_PASS_HASH || "";
         if (!expectedUser || !passHash) return false;
-        if (username !== expectedUser) return false;
+        if (u !== expectedUser) return false;
         return bcrypt.compareSync(password, passHash);
     },
 
@@ -360,33 +383,25 @@ module.exports = NodeHelper.create({
             delete require.cache[require.resolve(configPath)];
         }
 
-
+        // eslint-disable-next-line global-require, import/no-dynamic-require
         const cfg = require(configPath);
-
         if (!cfg || typeof cfg !== "object") throw new Error("Invalid config export");
         return JSON.parse(JSON.stringify(cfg));
     },
 
-    _findModuleEntry(cfg, moduleName, index) {
+    _findModuleIndex(cfg, moduleName, index) {
         const modules = Array.isArray(cfg.modules) ? cfg.modules : [];
-        let found = null;
-
         for (let i = 0; i < modules.length; i++) {
             const m = modules[i];
             if (!m || m.module !== moduleName) continue;
 
             if (Number.isFinite(index)) {
-                if (i === index) {
-                    found = Object.assign({}, m, { _index: i });
-                    break;
-                }
+                if (i === index) return i;
             } else {
-                found = Object.assign({}, m, { _index: i });
-                break;
+                return i;
             }
         }
-
-        return found;
+        return -1;
     },
 
     _backupFile(src, dst) {
@@ -400,9 +415,7 @@ module.exports = NodeHelper.create({
     _writeConfigObject(cfgObj) {
         const configPath = this._magicMirrorConfigPath();
         const tmpPath = `${configPath}.tmp`;
-
         const out = "module.exports = " + JSON.stringify(cfgObj, null, 2) + ";\n";
-
         fs.writeFileSync(tmpPath, out, "utf8");
         fs.renameSync(tmpPath, configPath);
     },
@@ -425,8 +438,6 @@ module.exports = NodeHelper.create({
 
     _broadcastConfigUpdated(moduleName, index) {
         this.sendSocketNotification("SR_ACTION", { type: "REFRESH" });
-
-
         console.log(`[MMM-SimpleRemote] config updated: ${moduleName} @ ${index}`);
     }
 });
