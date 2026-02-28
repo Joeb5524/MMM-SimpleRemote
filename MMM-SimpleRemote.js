@@ -61,7 +61,16 @@ Module.register("MMM-SimpleRemote", {
 
         if (this.config.dismissOnTouch) {
             wrapper.onclick = () => {
-                this.sendSocketNotification("SR_DISMISS_ACTIVE", {});
+                if (!this.active || !this.active.id) return;
+
+                // Front-end notification
+                this.sendNotification("REMOTE_ALERT_ACK", {
+                    alertId: this.active.id,
+                    acknowledgedAt: Date.now()
+                });
+
+                // Node helper handles log + dismissal
+                this.sendSocketNotification("SR_ACK_ACTIVE", { id: this.active.id });
             };
         }
 
