@@ -103,6 +103,14 @@ Module.register("MMM-SimpleRemote", {
             this.updateDom(0);
             return;
         }
+        if (this.active && this.active.id) {
+            this.sendNotification("REMOTE_ALERT_SENT", {
+                alertId: this.active.id,
+                title: this.active.title,
+                message: this.active.message,
+                createdAt: this.active.createdAt
+            });
+        }
 
         if (notification === "SR_ACTION") {
             if (payload && payload.type === "REFRESH") {
