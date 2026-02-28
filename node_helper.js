@@ -40,6 +40,14 @@ module.exports = NodeHelper.create({
             this._broadcastActive();
             this._tickQueue();
         }
+        if (notification === "SR_ACK_ACTIVE" && payload && payload.id) {
+            this._logAck(payload.id);
+            this.active = null;
+            this.activeUntil = 0;
+            this._broadcastActive();
+            this._tickQueue();
+
+        }
     },
 
     _setupExpress() {
@@ -439,5 +447,17 @@ module.exports = NodeHelper.create({
     _broadcastConfigUpdated(moduleName, index) {
         this.sendSocketNotification("SR_ACTION", { type: "REFRESH" });
         console.log(`[MMM-SimpleRemote] config updated: ${moduleName} @ ${index}`);
+    },
+    _logAck(id) {
+        try {
+            const ackFile = path.join(this.dataDir, "acks.json");
+            let acks = [];
+            if (fs.existsSync(ackFile)) {
+                acks = JSON.parse(fs.readFileSync(ackFile, "utf8")) || [];
+                if (!Array.isArray(acks)) acks = [];
+            }
+            acks.push({ id: String(id), acknowledgedAt: Date.now() });
+            fs.writeFileSync(ackFile, JSON.stringify(acks, null, 2), "utf8");
+        } catch (e) {}
     }
 });
