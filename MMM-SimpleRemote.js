@@ -88,6 +88,15 @@ Module.register("MMM-SimpleRemote", {
             this.active = null;
             this.updateDom(0);
         }
+        if (notification === "SR_ACK_ACTIVE_REQUEST") {
+            this.sendSocketNotification("SR_DISMISS_ACTIVE", {});
+            return;
+        }
+
+        if (notification === "SR_DISMISS_ACTIVE_REQUEST") {
+            this.sendSocketNotification("SR_DISMISS_ACTIVE", {});
+            return;
+        }
     },
 
     socketNotificationReceived(notification, payload) {
