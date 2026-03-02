@@ -180,3 +180,124 @@
     border-color: rgba(255, 102, 102, 0.65) !important;
     box-shadow: 0 0 0 1px rgba(255, 102, 102, 0.22) !important;
 }
+/*form section*/
+.sr-tabs {
+    display: inline-flex;
+    gap: 8px;
+    padding: 4px;
+    border-radius: 12px;
+    background: rgba(0,0,0,0.18);
+    border: 1px solid rgba(255,255,255,0.10);
+}
+
+.sr-tab {
+    appearance: none;
+    border: 0;
+    cursor: pointer;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: transparent;
+    color: #e8eaf0;
+    opacity: 0.85;
+    font-weight: 700;
+}
+
+.sr-tab:hover { background: rgba(255,255,255,0.06); opacity: 1; }
+.sr-tab--active { background: rgba(255,255,255,0.10); opacity: 1; }
+
+.sr-subhelp {
+    font-size: 13px;
+    opacity: 0.85;
+}
+
+.sr-mod__top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.sr-mod__sub {
+    margin-top: 4px;
+    font-size: 12px;
+    opacity: 0.75;
+}
+
+.sr-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.sr-form__row {
+    display: grid;
+    grid-template-columns: 1.1fr 1.6fr auto;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(0,0,0,0.18);
+}
+
+@media (max-width: 900px) {
+    .sr-form__row { grid-template-columns: 1fr; }
+}
+
+.sr-form__labelTop {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 800;
+}
+
+.sr-form__actions {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+.sr-form__empty {
+    padding: 12px;
+    border-radius: 14px;
+    opacity: 0.8;
+    border: 1px dashed rgba(255,255,255,0.12);
+}
+
+.sr-pill {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.10);
+    opacity: 0.9;
+}
+
+.sr-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(0,0,0,0.14);
+    border: 1px solid rgba(255,255,255,0.10);
+}
+
+.sr-toggle input { width: 18px; height: 18px; }
+
+.sr-toggle__text {
+    font-weight: 800;
+    opacity: 0.9;
+}
+
+.sr-inlinehelp {
+    margin-top: 6px;
+    font-size: 12px;
+    opacity: 0.75;
+}
+
+.textarea.sr-bad {
+    border-color: rgba(255, 102, 102, 0.65) !important;
+    box-shadow: 0 0 0 1px rgba(255, 102, 102, 0.22) !important;
+}

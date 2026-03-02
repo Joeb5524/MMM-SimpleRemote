@@ -2,7 +2,6 @@ let picked = null;
 
 let currentConfig = {};
 let workingConfig = {};
-let currentSchema = null;
 
 const el = (id) => document.getElementById(id);
 
@@ -19,7 +18,6 @@ el("load").onclick = async () => {
 el("save").onclick = async () => {
     hideMsg();
     if (!picked) return;
-
 
     const activeJson = isJsonTabActive();
     let nextConfig = null;
@@ -49,29 +47,50 @@ el("save").onclick = async () => {
         currentConfig = deepClone(nextConfig);
         workingConfig = deepClone(nextConfig);
         syncJsonFromWorking();
-        if (currentSchema) renderForm();
+        renderForm();
     } else {
         const details = (res && res.json) ? res.json : null;
         showBad("Save failed.", details);
     }
 };
 
-function setupTabs() {
-    el("tabForm").onclick = () => setTab("form");
-    el("tabJson").onclick = () => setTab("json");
+el("tabForm").onclick = () => setTab("form");
+el("tabJson").onclick = () => setTab("json");
+
+el("addField").onclick = () => {
+    if (!picked) return;
+
+    const key = prompt("New config key (e.g. 'use24Hour'):");
+    if (!key) return;
+
+    const clean = String(key).trim();
+    if (!clean) return;
+
+    if (Object.prototype.hasOwnProperty.call(workingConfig, clean)) {
+        alert("That key already exists.");
+        return;
+    }
+
+
+    workingConfig[clean] = "";
+    syncJsonFromWorking();
+    renderForm();
+};
+
+function setupEditorVisible() {
+    el("tabs").style.display = "inline-flex";
+    el("hint").style.display = "block";
+    el("load").disabled = false;
+    el("save").disabled = false;
 }
 
 function setTab(which) {
-    const formBtn = el("tabForm");
-    const jsonBtn = el("tabJson");
-
     const showForm = which === "form";
-    formBtn.classList.toggle("sr-tab--active", showForm);
-    jsonBtn.classList.toggle("sr-tab--active", !showForm);
+    el("tabForm").classList.toggle("sr-tab--active", showForm);
+    el("tabJson").classList.toggle("sr-tab--active", !showForm);
 
     el("formPane").style.display = showForm ? "block" : "none";
     el("jsonPane").style.display = showForm ? "none" : "block";
-
 
     if (!showForm) syncJsonFromWorking();
 }
@@ -81,8 +100,6 @@ function isJsonTabActive() {
 }
 
 async function init() {
-    setupTabs();
-
     const res = await window.srFetch("/api/config/modules", { method: "GET" });
     if (!res || !res.ok || !res.json) return;
 
@@ -98,15 +115,13 @@ async function init() {
                 <div><strong>${escapeHtml(m.module)}</strong></div>
                 <div class="sr-chip">${escapeHtml(m.position || "")} #${m.index}</div>
             </div>
-            <div class="sr-mod__sub dimmed">${escapeHtml(m.header || "")}</div>
+            ${m.header ? `<div class="sr-mod__sub dimmed">${escapeHtml(m.header)}</div>` : ``}
         `;
 
         div.onclick = async () => {
             picked = m;
             el("pickedTitle").textContent = `${m.module} (index ${m.index})`;
-            el("load").disabled = false;
-            el("save").disabled = false;
-            el("tabs").style.display = "inline-flex";
+            setupEditorVisible();
             await loadPicked();
         };
 
@@ -117,7 +132,6 @@ async function init() {
 async function loadPicked() {
     hideMsg();
 
-    // load config
     const res = await window.srFetch(
         `/api/config/module?name=${encodeURIComponent(picked.module)}&index=${picked.index}`,
         { method: "GET" }
@@ -131,323 +145,150 @@ async function loadPicked() {
     currentConfig = deepClone(res.json.config || {});
     workingConfig = deepClone(currentConfig);
 
-
-    currentSchema = await tryLoadSchema(picked.module);
-
-
     syncJsonFromWorking();
-    updateSchemaHint();
-    if (currentSchema) {
-        renderForm();
-        setTab("form");
-    } else {
-        // no schema  default to JSON editor
-        el("formPane").style.display = "none";
-        el("jsonPane").style.display = "block";
-        el("tabForm").disabled = true;
-        el("tabJson").disabled = false;
-        el("tabForm").classList.remove("sr-tab--active");
-        el("tabJson").classList.add("sr-tab--active");
-    }
-}
-
-async function tryLoadSchema(moduleName) {
-    el("tabForm").disabled = false;
-
-    const res = await window.srFetch(`/api/config/schema?name=${encodeURIComponent(moduleName)}`, { method: "GET" });
-    if (!res || !res.ok || !res.json || !res.json.ok) {
-        el("tabForm").disabled = true;
-        return null;
-    }
-    return res.json.schema || null;
-}
-
-function updateSchemaHint() {
-    const hint = el("schemaHint");
-    hint.style.display = "block";
-
-    if (currentSchema) {
-        hint.innerHTML = `Form editor is available (schema loaded). You can still use <strong>Advanced JSON</strong>.`;
-    } else {
-        hint.innerHTML = `No schema file found for this module, so only <strong>Advanced JSON</strong> is available.
-            <span class="sr-muted">Add <code>schemas/${escapeHtml(picked.module)}.schema.json</code> to enable the form editor.</span>`;
-    }
+    renderForm();
+    setTab("form");
 }
 
 function renderForm() {
     const wrap = el("formWrap");
     wrap.innerHTML = "";
 
-    el("tabForm").disabled = false;
+    const keys = Object.keys(workingConfig || {}).sort((a, b) => a.localeCompare(b));
 
-    const schema = currentSchema;
-    const root = schema && schema.type === "object" ? schema : { type: "object", properties: {} };
-
-
-    const top = document.createElement("div");
-    top.className = "sr-form__top";
-    top.innerHTML = `
-        <div class="sr-form__title">Edit config</div>
-        <div class="sr-form__meta">
-            <span class="sr-badge">schema-driven</span>
-            <span class="sr-badge sr-badge--subtle">${escapeHtml(picked.module)}</span>
-        </div>
-    `;
-    wrap.appendChild(top);
-
-    const props = root.properties || {};
-    const required = new Set(Array.isArray(root.required) ? root.required : []);
-
-    Object.keys(props).sort().forEach((key) => {
-        const fieldSchema = props[key] || {};
-        const isReq = required.has(key);
-
-        const row = renderFieldRow(key, fieldSchema, isReq);
-        wrap.appendChild(row);
-    });
-
-
-    if (!Object.keys(props).length) {
+    if (!keys.length) {
         const empty = document.createElement("div");
         empty.className = "sr-form__empty";
-        empty.textContent = "Schema has no editable properties. Use Advanced JSON.";
+        empty.textContent = "No config keys found for this module. Use “Add field” or Advanced JSON.";
         wrap.appendChild(empty);
+        return;
     }
 
-    el("formPane").style.display = "block";
-    el("jsonPane").style.display = "none";
-}
+    keys.forEach((key) => {
+        const val = workingConfig[key];
 
-function renderFieldRow(key, schema, isRequired) {
-    const row = document.createElement("div");
-    row.className = "sr-form__row";
+        const row = document.createElement("div");
+        row.className = "sr-form__row";
 
-    const label = document.createElement("div");
-    label.className = "sr-form__label";
-    label.innerHTML = `
-        <div class="sr-form__labelTop">
-            <span>${escapeHtml(key)}</span>
-            ${isRequired ? `<span class="sr-pill">required</span>` : ``}
-        </div>
-        ${schema.description ? `<div class="sr-form__desc">${escapeHtml(schema.description)}</div>` : ``}
-    `;
+        const label = document.createElement("div");
+        label.className = "sr-form__label";
+        label.innerHTML = `
+            <div class="sr-form__labelTop">
+                <span>${escapeHtml(key)}</span>
+                <span class="sr-pill">${escapeHtml(inferTypeLabel(val))}</span>
+            </div>
+        `;
 
-    const control = document.createElement("div");
-    control.className = "sr-form__control";
+        const control = document.createElement("div");
+        control.className = "sr-form__control";
+        control.appendChild(buildInputForValue(key, val));
 
-    const value = workingConfig[key];
+        const actions = document.createElement("div");
+        actions.className = "sr-form__actions";
 
-    const input = buildInputForSchema(schema, value, (nextVal) => {
-        // Store
-        if (nextVal === undefined) delete workingConfig[key];
-        else workingConfig[key] = nextVal;
+        const resetBtn = document.createElement("button");
+        resetBtn.type = "button";
+        resetBtn.className = "button is-small is-light";
+        resetBtn.textContent = "Reset";
+        resetBtn.onclick = () => {
+            const orig = currentConfig[key];
+            if (orig === undefined) delete workingConfig[key];
+            else workingConfig[key] = deepClone(orig);
+            syncJsonFromWorking();
+            renderForm();
+        };
 
-        syncJsonFromWorking();
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.className = "button is-small is-light";
+        delBtn.textContent = "Remove";
+        delBtn.onclick = () => {
+            const ok = confirm(`Remove '${key}' from config?`);
+            if (!ok) return;
+            delete workingConfig[key];
+            syncJsonFromWorking();
+            renderForm();
+        };
+
+        actions.appendChild(resetBtn);
+        actions.appendChild(delBtn);
+
+        row.appendChild(label);
+        row.appendChild(control);
+        row.appendChild(actions);
+
+        wrap.appendChild(row);
     });
-
-    control.appendChild(input);
-
-    // reset
-    const actions = document.createElement("div");
-    actions.className = "sr-form__actions";
-
-    const resetBtn = document.createElement("button");
-    resetBtn.type = "button";
-    resetBtn.className = "button is-small is-light";
-    resetBtn.textContent = "Reset";
-    resetBtn.onclick = () => {
-        const orig = currentConfig[key];
-        if (orig === undefined) delete workingConfig[key];
-        else workingConfig[key] = deepClone(orig);
-        renderForm();
-        syncJsonFromWorking();
-    };
-
-    actions.appendChild(resetBtn);
-
-    row.appendChild(label);
-    row.appendChild(control);
-    row.appendChild(actions);
-    return row;
 }
 
-function buildInputForSchema(schema, value, onChange) {
-    // enum => select
-    if (Array.isArray(schema.enum)) {
-        const sel = document.createElement("select");
-        sel.className = "input";
-        schema.enum.forEach(opt => {
-            const o = document.createElement("option");
-            o.value = String(opt);
-            o.textContent = String(opt);
-            sel.appendChild(o);
-        });
-
-        sel.value = value !== undefined ? String(value) : (schema.default !== undefined ? String(schema.default) : sel.value);
-        sel.onchange = () => onChange(sel.value);
-        return sel;
-    }
-
-    const t = schema.type;
-
-    // bool
-    if (t === "boolean") {
+function buildInputForValue(key, val) {
+    // boolean => toggle
+    if (typeof val === "boolean") {
         const wrap = document.createElement("label");
         wrap.className = "sr-toggle";
 
         const cb = document.createElement("input");
         cb.type = "checkbox";
-        cb.checked = value !== undefined ? !!value : !!schema.default;
-        cb.onchange = () => onChange(!!cb.checked);
+        cb.checked = !!val;
 
         const text = document.createElement("span");
         text.className = "sr-toggle__text";
         text.textContent = cb.checked ? "On" : "Off";
 
-        cb.addEventListener("change", () => {
+        cb.onchange = () => {
+            workingConfig[key] = !!cb.checked;
             text.textContent = cb.checked ? "On" : "Off";
-        });
+            syncJsonFromWorking();
+        };
 
         wrap.appendChild(cb);
         wrap.appendChild(text);
         return wrap;
     }
 
-    // numbers
-    if (t === "number" || t === "integer") {
+    // number
+    if (typeof val === "number") {
         const input = document.createElement("input");
         input.className = "input";
         input.type = "number";
-        if (Number.isFinite(schema.minimum)) input.min = String(schema.minimum);
-        if (Number.isFinite(schema.maximum)) input.max = String(schema.maximum);
-        if (Number.isFinite(schema.multipleOf)) input.step = String(schema.multipleOf);
-        else input.step = t === "integer" ? "1" : "any";
-
-        const start = value !== undefined ? value : schema.default;
-        input.value = (start !== undefined && start !== null) ? String(start) : "";
+        input.step = Number.isInteger(val) ? "1" : "any";
+        input.value = String(val);
 
         input.oninput = () => {
             const raw = input.value.trim();
-            if (!raw) return onChange(undefined);
+            if (!raw) return;
             const n = Number(raw);
             if (!Number.isFinite(n)) return;
-            onChange(t === "integer" ? Math.trunc(n) : n);
+            workingConfig[key] = Number.isInteger(val) ? Math.trunc(n) : n;
+            syncJsonFromWorking();
         };
 
         return input;
     }
 
-    // arrays
-    if (t === "array") {
-        const itemSchema = schema.items || {};
-        const arr = Array.isArray(value) ? value : (Array.isArray(schema.default) ? schema.default : []);
-
-        const box = document.createElement("div");
-        box.className = "sr-array";
-
-        const list = document.createElement("div");
-        list.className = "sr-array__list";
-        box.appendChild(list);
-
-        function redraw() {
-            list.innerHTML = "";
-
-            const cur = Array.isArray(workingConfig[keyOfArrayHack]) ? workingConfig[keyOfArrayHack] : arr;
-            const useArr = Array.isArray(cur) ? cur : [];
-
-            useArr.forEach((v, idx) => {
-                const row = document.createElement("div");
-                row.className = "sr-array__row";
-
-                const inp = buildInputForSchema(
-                    normalizeSchemaForArrayItem(itemSchema),
-                    v,
-                    (nextVal) => {
-                        const next = useArr.slice();
-                        next[idx] = nextVal;
-                        onChange(next);
-                    }
-                );
-
-                const del = document.createElement("button");
-                del.type = "button";
-                del.className = "button is-small is-light";
-                del.textContent = "Remove";
-                del.onclick = () => {
-                    const next = useArr.slice();
-                    next.splice(idx, 1);
-                    onChange(next.length ? next : []);
-                    redraw();
-                };
-
-                row.appendChild(inp);
-                row.appendChild(del);
-                list.appendChild(row);
-            });
-
-            if (!useArr.length) {
-                const empty = document.createElement("div");
-                empty.className = "sr-array__empty";
-                empty.textContent = "No items";
-                list.appendChild(empty);
-            }
-        }
-
-        const add = document.createElement("button");
-        add.type = "button";
-        add.className = "button is-small is-link is-light";
-        add.textContent = "Add item";
-        add.onclick = () => {
-            const base = Array.isArray(value) ? value : [];
-            const next = base.slice();
-            next.push(defaultForSchema(itemSchema));
-            onChange(next);
-            redraw();
-        };
-
-
-        const keyOfArrayHack = "__sr_key__" + Math.random().toString(36).slice(2);
-
-        Object.defineProperty(workingConfig, keyOfArrayHack, { value: arr, writable: true });
-
-
-        const originalOnChange = onChange;
-        onChange = (next) => {
-            workingConfig[keyOfArrayHack] = next;
-            originalOnChange(next);
-        };
-
-        box.appendChild(add);
-        redraw();
-        return box;
-    }
-
-    // objects => JSON mini-editor
-    if (t === "object") {
+    // arrays/objects
+    if (val && typeof val === "object") {
         const ta = document.createElement("textarea");
         ta.className = "textarea";
         ta.rows = 4;
-        ta.placeholder = "Enter JSON object…";
-
-        const start = value !== undefined ? value : schema.default;
-        ta.value = JSON.stringify(start || {}, null, 2);
+        ta.value = JSON.stringify(val, null, 2);
 
         const note = document.createElement("div");
         note.className = "sr-inlinehelp";
-        note.textContent = "Object editing uses JSON here (schema rendering for nested objects can be added later).";
+        note.textContent = "Editing as JSON (arrays/objects).";
 
         const wrap = document.createElement("div");
         wrap.appendChild(ta);
         wrap.appendChild(note);
 
-        let lastGood = start || {};
         ta.oninput = () => {
             try {
                 const parsed = JSON.parse(ta.value);
-                if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-                    lastGood = parsed;
+                // allow arrays or objects only here
+                if (parsed && typeof parsed === "object") {
                     ta.classList.remove("sr-bad");
-                    onChange(parsed);
+                    workingConfig[key] = parsed;
+                    syncJsonFromWorking();
                 } else {
                     ta.classList.add("sr-bad");
                 }
@@ -459,43 +300,27 @@ function buildInputForSchema(schema, value, onChange) {
         return wrap;
     }
 
-    // string (default)
+    // string
     const input = document.createElement("input");
     input.className = "input";
     input.type = "text";
-    input.placeholder = schema.default !== undefined ? String(schema.default) : "";
-
-    const start = value !== undefined ? value : schema.default;
-    input.value = (start !== undefined && start !== null) ? String(start) : "";
+    input.value = (val === null || val === undefined) ? "" : String(val);
 
     input.oninput = () => {
-        const s = input.value;
-        if (s.trim() === "" && schema.default === undefined) onChange(undefined);
-        else onChange(s);
+        // Keep as string (inference-only approach; user can convert via JSON tab if needed)
+        workingConfig[key] = input.value;
+        syncJsonFromWorking();
     };
 
     return input;
 }
 
-function normalizeSchemaForArrayItem(itemSchema) {
-    // default to string
-    if (!itemSchema || typeof itemSchema !== "object") return { type: "string" };
-    if (!itemSchema.type && !itemSchema.enum) return { ...itemSchema, type: "string" };
-    return itemSchema;
-}
-
-function defaultForSchema(schema) {
-    if (!schema || typeof schema !== "object") return "";
-    if (schema.default !== undefined) return deepClone(schema.default);
-    if (Array.isArray(schema.enum) && schema.enum.length) return schema.enum[0];
-    switch (schema.type) {
-        case "boolean": return false;
-        case "number":
-        case "integer": return 0;
-        case "array": return [];
-        case "object": return {};
-        default: return "";
-    }
+function inferTypeLabel(val) {
+    if (Array.isArray(val)) return "array";
+    if (val === null) return "null";
+    const t = typeof val;
+    if (t === "object") return "object";
+    return t;
 }
 
 function syncJsonFromWorking() {
