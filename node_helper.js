@@ -200,6 +200,16 @@ module.exports = NodeHelper.create({
                 res.status(500).json({ ok: false, error: "Failed to read config.js" });
             }
         });
+        // Config API: get schema for module
+        app.get(`${this.basePath}/api/config/schema`, this._requireAuth.bind(this), (req, res) => {
+            const moduleName = String(req.query.name || "");
+            if (!moduleName) return res.status(400).json({ ok: false, error: "Missing module name" });
+
+            const out = this._loadSchema(moduleName);
+            if (!out) return res.status(404).json({ ok: false, error: "Schema not found" });
+
+            return res.json({ ok: true, schema: out });
+        });
 
 
         app.patch(`${this.basePath}/api/config/module`, this._requireAuth.bind(this), this._jsonBody(), (req, res) => {
@@ -391,7 +401,6 @@ module.exports = NodeHelper.create({
             delete require.cache[require.resolve(configPath)];
         }
 
-        // eslint-disable-next-line global-require, import/no-dynamic-require
         const cfg = require(configPath);
         if (!cfg || typeof cfg !== "object") throw new Error("Invalid config export");
         return JSON.parse(JSON.stringify(cfg));
