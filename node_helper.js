@@ -287,16 +287,6 @@ module.exports = NodeHelper.create({
     _checkLogin(username, password) {
         const u = String(username || "");
 
-        // Built-in test user
-        // Username: test
-        // Password: test
-        // Disable by setting SR_DISABLE_TEST_USER=1
-        if (process.env.SR_DISABLE_TEST_USER !== "1") {
-            if (u === "test") {
-                const testHash = "$2b$10$I7XxzN1YYKIKn5USWhZWBOVpNb3eo.r0MxpTUs/6q6RqKXTpDFC96";
-                return bcrypt.compareSync(password, testHash);
-            }
-        }
 
         // Multi-user list from env
         const usersJson = process.env.SR_USERS_JSON;
