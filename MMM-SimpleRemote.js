@@ -3,7 +3,6 @@
 Module.register("MMM-SimpleRemote", {
     defaults: {
         basePath: "/mm-simple-remote",
-        displaySeconds: 20,
         maxQueue: 25,
         showTimestamp: true,
         dismissOnTouch: true
@@ -11,9 +10,9 @@ Module.register("MMM-SimpleRemote", {
 
     start() {
         Log.info(`[MMM-SimpleRemote] starting (${this.config.basePath})`);
+
         this.queue = [];
         this.active = null;
-        this.activeUntil = 0;
 
         this.sendSocketNotification("SR_INIT", {
             basePath: this.config.basePath,
@@ -47,11 +46,10 @@ Module.register("MMM-SimpleRemote", {
 
         const meta = document.createElement("div");
         meta.className = "sr-meta";
+
         if (this.config.showTimestamp && this.active.createdAt) {
             const d = new Date(this.active.createdAt);
             meta.textContent = d.toLocaleString();
-        } else {
-            meta.textContent = "";
         }
 
         card.appendChild(title);
@@ -63,14 +61,16 @@ Module.register("MMM-SimpleRemote", {
             wrapper.onclick = () => {
                 if (!this.active || !this.active.id) return;
 
-                // Front-end notification
                 this.sendNotification("REMOTE_ALERT_ACK", {
                     alertId: this.active.id,
                     acknowledgedAt: Date.now()
                 });
 
-                // Node helper handles log + dismissal
-                this.sendSocketNotification("SR_ACK_ACTIVE", { id: this.active.id });
+                this.sendSocketNotification("SR_ACK_ACTIVE", {
+                    id: this.active.id
+                });
+
+                this.dismissActive();
             };
         }
 
@@ -78,6 +78,7 @@ Module.register("MMM-SimpleRemote", {
     },
 
     notificationReceived(notification, payload) {
+
         if (notification === "SR_SHOW_ALERT" && payload) {
             this.enqueue(payload);
             return;
@@ -87,38 +88,35 @@ Module.register("MMM-SimpleRemote", {
             this.queue = [];
             this.active = null;
             this.updateDom(0);
-        }
-        if (notification === "SR_ACK_ACTIVE_REQUEST") {
-            this.sendSocketNotification("SR_DISMISS_ACTIVE", {});
             return;
         }
 
-        if (notification === "SR_DISMISS_ACTIVE_REQUEST") {
+        if (
+            notification === "SR_ACK_ACTIVE_REQUEST" ||
+            notification === "SR_DISMISS_ACTIVE_REQUEST"
+        ) {
             this.sendSocketNotification("SR_DISMISS_ACTIVE", {});
+            this.dismissActive();
             return;
         }
     },
 
     socketNotificationReceived(notification, payload) {
+
         if (notification === "SR_ALERTS_SYNC") {
             this.queue = Array.isArray(payload.queue) ? payload.queue : [];
-            this.tick();
+
+            if (!this.active) {
+                this.showNext();
+            }
+
             return;
         }
 
         if (notification === "SR_ACTIVE_CHANGED") {
             this.active = payload && payload.active ? payload.active : null;
-            this.activeUntil = payload && payload.activeUntil ? payload.activeUntil : 0;
             this.updateDom(0);
             return;
-        }
-        if (this.active && this.active.id) {
-            this.sendNotification("REMOTE_ALERT_SENT", {
-                alertId: this.active.id,
-                title: this.active.title,
-                message: this.active.message,
-                createdAt: this.active.createdAt
-            });
         }
 
         if (notification === "SR_ACTION") {
@@ -130,26 +128,38 @@ Module.register("MMM-SimpleRemote", {
 
     enqueue(alert) {
         this.queue.push(alert);
-        if (this.queue.length > this.config.maxQueue) this.queue.shift();
-        this.tick();
+
+        if (this.queue.length > this.config.maxQueue) {
+            this.queue.shift();
+        }
+
+        if (!this.active) {
+            this.showNext();
+        }
     },
 
-    tick() {
-        const now = Date.now();
-        if (this.active && now < this.activeUntil) return;
-
+    showNext() {
         if (!this.queue.length) {
-            if (this.active) {
-                this.active = null;
-                this.updateDom(0);
-            }
+            this.active = null;
+            this.updateDom(0);
             return;
         }
 
         this.active = this.queue.shift();
-        this.activeUntil = now + (this.config.displaySeconds * 1000);
         this.updateDom(0);
 
-        setTimeout(() => this.tick(), (this.config.displaySeconds * 1000) + 50);
+        if (this.active && this.active.id) {
+            this.sendNotification("REMOTE_ALERT_SENT", {
+                alertId: this.active.id,
+                title: this.active.title,
+                message: this.active.message,
+                createdAt: this.active.createdAt
+            });
+        }
+    },
+
+    dismissActive() {
+        this.active = null;
+        this.showNext();
     }
 });
