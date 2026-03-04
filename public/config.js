@@ -1,5 +1,7 @@
 let picked = null;
 
+let pickedSchema = null;
+
 let currentConfig = {};
 let workingConfig = {};
 
@@ -70,7 +72,6 @@ el("addField").onclick = () => {
         alert("That key already exists.");
         return;
     }
-
 
     workingConfig[clean] = "";
     syncJsonFromWorking();
@@ -145,12 +146,17 @@ async function loadPicked() {
     currentConfig = deepClone(res.json.config || {});
     workingConfig = deepClone(currentConfig);
 
+    pickedSchema = await loadSchemaForPicked();
+
     syncJsonFromWorking();
     renderForm();
     setTab("form");
 }
 
 function renderForm() {
+    // module-specific friendly editors
+    if (renderSimpleEditorIfAvailable()) return;
+
     const wrap = el("formWrap");
     wrap.innerHTML = "";
 
@@ -219,6 +225,236 @@ function renderForm() {
 
         wrap.appendChild(row);
     });
+}
+
+async function loadSchemaForPicked() {
+    if (!picked || !picked.module) return null;
+    const res = await window.srFetch(`/api/config/schema?name=${encodeURIComponent(picked.module)}`, { method: "GET" });
+    if (!res || !res.ok || !res.json || !res.json.ok) return null;
+    return res.json.schema || null;
+}
+
+function renderSimpleEditorIfAvailable() {
+    const simple = el("simplePane");
+    const wrap = el("formWrap");
+
+    simple.innerHTML = "";
+    simple.style.display = "none";
+    wrap.style.display = "block";
+
+
+    el("addField").style.display = "inline-flex";
+
+    // user friendly editor
+    if (picked && picked.module === "MMM-MedicationReminder") {
+        el("addField").style.display = "none";
+        wrap.style.display = "none";
+        simple.style.display = "block";
+        renderMedicationReminderEditor(simple);
+        return true;
+    }
+
+    return false;
+}
+
+function renderMedicationReminderEditor(host) {
+    const cfg = workingConfig || {};
+    if (!Array.isArray(cfg.medications)) cfg.medications = [];
+
+    const title = document.createElement("div");
+    title.className = "mb-3";
+    title.innerHTML = `
+        <h3 class="title is-6">Medication schedule</h3>
+        <div class="sr-subhelp">Add medications below.</div>
+    `;
+    host.appendChild(title);
+
+    const tableWrap = document.createElement("div");
+    tableWrap.className = "table-container";
+
+    const table = document.createElement("table");
+    table.className = "table is-fullwidth is-striped";
+    table.innerHTML = `
+        <thead>
+            <tr>
+                <th>Medication</th>
+                <th>Dose</th>
+                <th style="width:140px;">Time</th>
+                <th style="width:110px;"></th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    `;
+
+    const tbody = table.querySelector("tbody");
+
+    const ensureRowShape = (m) => ({
+        name: (m && typeof m.name === "string") ? m.name : "",
+        dosage: (m && typeof m.dosage === "string") ? m.dosage : "",
+        time: (m && typeof m.time === "string") ? m.time : "08:00"
+    });
+
+    const timeOk = (s) => /^[0-2][0-9]:[0-5][0-9]$/.test(String(s || ""));
+
+    function renderRows() {
+        tbody.innerHTML = "";
+
+        cfg.medications = cfg.medications.map(ensureRowShape);
+
+        if (!cfg.medications.length) {
+            const tr = document.createElement("tr");
+            const td = document.createElement("td");
+            td.colSpan = 4;
+            td.className = "has-text-grey";
+            td.textContent = "No medications added yet.";
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+            return;
+        }
+
+        cfg.medications.forEach((m, idx) => {
+            const tr = document.createElement("tr");
+
+            // name
+            const tdName = document.createElement("td");
+            const nameInput = document.createElement("input");
+            nameInput.className = "input";
+            nameInput.type = "text";
+            nameInput.placeholder = "e.g. Fluoxetine";
+            nameInput.value = m.name;
+            nameInput.oninput = () => {
+                cfg.medications[idx].name = nameInput.value;
+                workingConfig = cfg;
+                syncJsonFromWorking();
+            };
+            tdName.appendChild(nameInput);
+            tr.appendChild(tdName);
+
+            // dosage
+            const tdDose = document.createElement("td");
+            const doseInput = document.createElement("input");
+            doseInput.className = "input";
+            doseInput.type = "text";
+            doseInput.placeholder = "e.g. 50mg";
+            doseInput.value = m.dosage;
+            doseInput.oninput = () => {
+                cfg.medications[idx].dosage = doseInput.value;
+                workingConfig = cfg;
+                syncJsonFromWorking();
+            };
+            tdDose.appendChild(doseInput);
+            tr.appendChild(tdDose);
+
+            // time
+            const tdTime = document.createElement("td");
+            const timeInput = document.createElement("input");
+            timeInput.className = "input";
+            timeInput.type = "time";
+            timeInput.step = "60";
+            timeInput.value = timeOk(m.time) ? m.time : "08:00";
+            timeInput.oninput = () => {
+                const v = String(timeInput.value || "");
+                cfg.medications[idx].time = v;
+                workingConfig = cfg;
+                syncJsonFromWorking();
+            };
+            tdTime.appendChild(timeInput);
+            tr.appendChild(tdTime);
+
+            // actions
+            const tdAct = document.createElement("td");
+            const del = document.createElement("button");
+            del.type = "button";
+            del.className = "button is-small is-light";
+            del.textContent = "Remove";
+            del.onclick = () => {
+                cfg.medications.splice(idx, 1);
+                workingConfig = cfg;
+                syncJsonFromWorking();
+                renderRows();
+            };
+            tdAct.appendChild(del);
+            tr.appendChild(tdAct);
+
+            tbody.appendChild(tr);
+        });
+    }
+
+    tableWrap.appendChild(table);
+    host.appendChild(tableWrap);
+
+    const controls = document.createElement("div");
+    controls.className = "buttons mt-3";
+
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "button is-link";
+    add.textContent = "Add medication";
+    add.onclick = () => {
+        cfg.medications.push({ name: "", dosage: "", time: "08:00" });
+        workingConfig = cfg;
+        syncJsonFromWorking();
+        renderRows();
+    };
+
+    const quick = document.createElement("button");
+    quick.type = "button";
+    quick.className = "button is-light";
+    quick.textContent = "Add example";
+    quick.onclick = () => {
+        cfg.medications.push({ name: "Paracetamol", dosage: "500mg", time: "08:00" });
+        workingConfig = cfg;
+        syncJsonFromWorking();
+        renderRows();
+    };
+
+    controls.appendChild(add);
+    controls.appendChild(quick);
+    host.appendChild(controls);
+
+    // Other settings (simple)
+    const settings = document.createElement("div");
+    settings.className = "mt-4";
+    settings.innerHTML = `
+        <h3 class="title is-6">Reminder settings</h3>
+        <div class="sr-subhelp">Optional behaviour tweaks.</div>
+    `;
+    host.appendChild(settings);
+
+    const friendly = [
+        { key: "alertWindowMinutes", label: "Alert window (minutes)", help: "How early/late around the time it still counts as due." },
+        { key: "missedGraceMinutes", label: "Missed grace (minutes)", help: "How long before a due dose becomes ‘missed’." },
+        { key: "showRelative", label: "Show relative times", help: "Show ‘in 10 minutes’ style text if supported." },
+        { key: "maxItems", label: "Max items on screen", help: "Limit how many reminders to render at once." }
+    ];
+
+    friendly.forEach(({ key, label, help }) => {
+        if (!(key in cfg)) return;
+
+        const field = document.createElement("div");
+        field.className = "field";
+
+        const lab = document.createElement("label");
+        lab.className = "label";
+        lab.textContent = label;
+
+        const ctrl = document.createElement("div");
+        ctrl.className = "control";
+
+        const input = buildInputForValue(key, cfg[key]);
+        ctrl.appendChild(input);
+
+        const p = document.createElement("p");
+        p.className = "help";
+        p.textContent = help;
+
+        field.appendChild(lab);
+        field.appendChild(ctrl);
+        field.appendChild(p);
+        host.appendChild(field);
+    });
+
+    renderRows();
 }
 
 function buildInputForValue(key, val) {
