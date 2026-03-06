@@ -3,22 +3,22 @@ const err = document.getElementById("err");
 
 btn.onclick = async () => {
     err.style.display = "none";
-    err.textContent = "Login failed.";
+    err.textContent = "";
 
     const username = document.getElementById("username").value.trim();
     const password = document.getElementById("password").value;
+    const confirmPassword = document.getElementById("confirmPassword").value;
 
-    const res = await window.srFetch("/api/login", {
+    const res = await window.srFetch("/api/bootstrap/setup", {
         method: "POST",
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username, password, confirmPassword })
     });
 
     if (res && res.ok && res.json && res.json.ok) {
         window.location.href = `${window.SR_BASE}/dashboard`;
-    } else if (res && res.json && res.json.error) {
-        err.textContent = res.json.error;
-        err.style.display = "block";
-    } else {
-        err.style.display = "block";
+        return;
     }
+
+    err.textContent = (res && res.json && res.json.error) ? res.json.error : "Setup failed.";
+    err.style.display = "block";
 };

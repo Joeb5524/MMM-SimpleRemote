@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Mirror Remote Setup</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.3/css/bulma.min.css">
+    <link rel="stylesheet" href="./app.css">
+</head>
+<body class="sr-bg">
+<section class="section">
+    <div class="container" style="max-width:520px;">
+        <div class="box sr-box">
+            <h1 class="title is-4">First-time setup</h1>
+            <p class="mb-4">Create the first dashboard account for this mirror. A session secret has already been generated automatically for this installation.</p>
+
+            <div class="notification is-info is-light">
+                This page is only shown until the first user has been created.
+            </div>
+
+            <div class="field">
+                <label class="label">Username</label>
+                <div class="control">
+                    <input id="username" class="input" type="text" autocomplete="username" placeholder="joe">
+                </div>
+                <p class="help">3-64 characters. Letters, numbers, dot, dash and underscore only.</p>
+            </div>
+
+            <div class="field">
+                <label class="label">Password</label>
+                <div class="control">
+                    <input id="password" class="input" type="password" autocomplete="new-password">
+                </div>
+            </div>
+
+            <div class="field">
+                <label class="label">Confirm password</label>
+                <div class="control">
+                    <input id="confirmPassword" class="input" type="password" autocomplete="new-password">
+                </div>
+            </div>
+
+            <p id="err" class="has-text-danger mb-3" style="display:none;"></p>
+
+            <button id="btn" class="button is-link is-fullwidth">Create account</button>
+        </div>
+    </div>
+</section>
+
+<script src="./app.js"></script>
+<script src="./setup.js"></script>
+</body>
+</html>

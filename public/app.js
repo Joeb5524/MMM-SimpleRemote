@@ -1,7 +1,6 @@
 (function () {
     const p = window.location.pathname;
 
-
     function getBasePath(pathname) {
         const publicIdx = pathname.indexOf("/public/");
         if (publicIdx !== -1) {
@@ -12,10 +11,9 @@
         if (parts.length === 0) return "";
 
         const last = parts[parts.length - 1];
-        if (last === "login" || last === "dashboard" || last === "config") {
+        if (last === "login" || last === "dashboard" || last === "config" || last === "setup") {
             return "/" + parts.slice(0, -1).join("/");
         }
-
 
         return "/" + parts[0];
     }
@@ -28,13 +26,20 @@
             credentials: "include"
         }, opts || {}));
 
+        const text = await res.text();
+        let payload = null;
+        try { payload = JSON.parse(text); } catch (_) {}
+
         if (res.status === 401) {
             window.location.href = `${window.SR_BASE}/login`;
             return null;
         }
 
-        const text = await res.text();
-        try { return { ok: res.ok, status: res.status, json: JSON.parse(text) }; }
-        catch (_) { return { ok: res.ok, status: res.status, json: null, raw: text }; }
+        if (res.status === 409 && payload && payload.needsSetup) {
+            window.location.href = `${window.SR_BASE}/setup`;
+            return null;
+        }
+
+        return { ok: res.ok, status: res.status, json: payload, raw: text };
     };
 })();

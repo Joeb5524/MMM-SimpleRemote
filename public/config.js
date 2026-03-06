@@ -412,7 +412,7 @@ function renderMedicationReminderEditor(host) {
     controls.appendChild(quick);
     host.appendChild(controls);
 
-    // Other settings (simple)
+    // Other settings
     const settings = document.createElement("div");
     settings.className = "mt-4";
     settings.innerHTML = `
@@ -458,7 +458,7 @@ function renderMedicationReminderEditor(host) {
 }
 
 function buildInputForValue(key, val) {
-    // boolean => toggle
+    // boolean
     if (typeof val === "boolean") {
         const wrap = document.createElement("label");
         wrap.className = "sr-toggle";
@@ -543,7 +543,7 @@ function buildInputForValue(key, val) {
     input.value = (val === null || val === undefined) ? "" : String(val);
 
     input.oninput = () => {
-        // Keep as string (inference-only approach; user can convert via JSON tab if needed)
+        // Keep as string
         workingConfig[key] = input.value;
         syncJsonFromWorking();
     };

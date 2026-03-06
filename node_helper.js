@@ -1,6 +1,7 @@
 const NodeHelper = require("node_helper");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 const session = require("express-session");
 const helmet = require("helmet");
@@ -15,9 +16,11 @@ module.exports = NodeHelper.create({
 
         this.dataDir = path.join(__dirname, "data");
         this.alertsFile = path.join(this.dataDir, "alerts.json");
+        this.authFile = path.join(this.dataDir, "auth.json");
 
         this._ensureDir(this.dataDir);
 
+        this.authStore = this._loadOrCreateAuthStore();
         this.queue = this._loadAlerts();
         this.active = null;
         this.activeUntil = 0;
@@ -58,14 +61,10 @@ module.exports = NodeHelper.create({
             contentSecurityPolicy: false
         }));
 
-        const sessionSecret = process.env.SR_SESSION_SECRET;
-        if (!sessionSecret || sessionSecret.length < 24) {
-            console.warn("[MMM-SimpleRemote] SR_SESSION_SECRET is missing or too short.");
-        }
-
+        const sessionSecret = this._getSessionSecret();
         app.use(session({
             name: "sr.sid",
-            secret: sessionSecret || "CHANGE_ME_LONG_RANDOM_SECRET",
+            secret: sessionSecret,
             resave: false,
             saveUninitialized: false,
             cookie: {
@@ -75,19 +74,72 @@ module.exports = NodeHelper.create({
             }
         }));
 
-
         app.use(`${this.basePath}`, this._static(path.join(__dirname, "public")));
 
         app.get(`${this.basePath}`, (req, res) => {
+            if (this._needsBootstrap()) return res.redirect(`${this.basePath}/setup`);
             if (!this._isAuthed(req)) return res.redirect(`${this.basePath}/login`);
             return res.redirect(`${this.basePath}/dashboard`);
         });
 
         app.get(`${this.basePath}/login`, (req, res) => {
+            if (this._needsBootstrap()) return res.redirect(`${this.basePath}/setup`);
+            if (this._isAuthed(req)) return res.redirect(`${this.basePath}/dashboard`);
             res.sendFile(path.join(__dirname, "public", "login.html"));
         });
 
+        app.get(`${this.basePath}/setup`, (req, res) => {
+            if (!this._needsBootstrap()) return res.redirect(`${this.basePath}/login`);
+            res.sendFile(path.join(__dirname, "public", "setup.html"));
+        });
+
+        app.get(`${this.basePath}/api/bootstrap/status`, (req, res) => {
+            return res.json({
+                ok: true,
+                needsSetup: this._needsBootstrap(),
+                hasUsers: this._hasConfiguredUsers(),
+                sessionSecretSource: this._sessionSecretSource(),
+                authSource: this._authSource()
+            });
+        });
+
+        app.post(`${this.basePath}/api/bootstrap/setup`, this._jsonBody(), (req, res) => {
+            if (!this._needsBootstrap()) {
+                return res.status(409).json({ ok: false, error: "Setup has already been completed" });
+            }
+
+            const username = this._cleanText(req.body && req.body.username, 64);
+            const password = String((req.body && req.body.password) || "");
+            const confirmPassword = String((req.body && req.body.confirmPassword) || "");
+
+            const validation = this._validateBootstrapCredentials(username, password, confirmPassword);
+            if (!validation.ok) {
+                return res.status(400).json({ ok: false, error: validation.error });
+            }
+
+            try {
+                const passHash = bcrypt.hashSync(password, 10);
+                this.authStore.users = [{
+                    username,
+                    passHash,
+                    createdAt: Date.now()
+                }];
+                this.authStore.initializedAt = this.authStore.initializedAt || Date.now();
+                this.authStore.updatedAt = Date.now();
+                this._saveAuthStore();
+
+                req.session.user = username;
+                return res.json({ ok: true, username });
+            } catch (e) {
+                return res.status(500).json({ ok: false, error: "Failed to complete setup" });
+            }
+        });
+
         app.post(`${this.basePath}/api/login`, this._jsonBody(), (req, res) => {
+            if (this._needsBootstrap()) {
+                return res.status(409).json({ ok: false, needsSetup: true, error: "Initial setup required" });
+            }
+
             const user = (req.body && req.body.username) ? String(req.body.username) : "";
             const pass = (req.body && req.body.password) ? String(req.body.password) : "";
 
@@ -103,16 +155,17 @@ module.exports = NodeHelper.create({
         });
 
         app.get(`${this.basePath}/dashboard`, (req, res) => {
+            if (this._needsBootstrap()) return res.redirect(`${this.basePath}/setup`);
             if (!this._isAuthed(req)) return res.redirect(`${this.basePath}/login`);
             res.sendFile(path.join(__dirname, "public", "dashboard.html"));
         });
 
         app.get(`${this.basePath}/config`, (req, res) => {
+            if (this._needsBootstrap()) return res.redirect(`${this.basePath}/setup`);
             if (!this._isAuthed(req)) return res.redirect(`${this.basePath}/login`);
             res.sendFile(path.join(__dirname, "public", "config.html"));
         });
 
-        // Alerts API
         app.get(`${this.basePath}/api/alerts`, this._requireAuth.bind(this), (req, res) => {
             res.json({ ok: true, queue: this.queue, active: this.active, activeUntil: this.activeUntil });
         });
@@ -167,7 +220,6 @@ module.exports = NodeHelper.create({
             res.json({ ok: true });
         });
 
-        // Config API: list modules
         app.get(`${this.basePath}/api/config/modules`, this._requireAuth.bind(this), (req, res) => {
             try {
                 const cfg = this._loadConfigObject(true);
@@ -184,7 +236,6 @@ module.exports = NodeHelper.create({
             }
         });
 
-        // Config API: read one module config
         app.get(`${this.basePath}/api/config/module`, this._requireAuth.bind(this), (req, res) => {
             const moduleName = String(req.query.name || "");
             const index = Number(req.query.index);
@@ -200,7 +251,7 @@ module.exports = NodeHelper.create({
                 res.status(500).json({ ok: false, error: "Failed to read config.js" });
             }
         });
-        // Config API: get schema for module
+
         app.get(`${this.basePath}/api/config/schema`, this._requireAuth.bind(this), (req, res) => {
             const moduleName = String(req.query.name || "");
             if (!moduleName) return res.status(400).json({ ok: false, error: "Missing module name" });
@@ -210,7 +261,6 @@ module.exports = NodeHelper.create({
 
             return res.json({ ok: true, schema: out });
         });
-
 
         app.patch(`${this.basePath}/api/config/module`, this._requireAuth.bind(this), this._jsonBody(), (req, res) => {
             const moduleName = this._cleanText(req.body && req.body.name, 80);
@@ -250,7 +300,6 @@ module.exports = NodeHelper.create({
             }
         });
 
-        // optional
         app.post(`${this.basePath}/api/external/alert`, this._jsonBody(), (req, res) => {
             const key = process.env.SR_EXTERNAL_KEY;
             if (!key) return res.status(403).json({ ok: false });
@@ -276,6 +325,7 @@ module.exports = NodeHelper.create({
     },
 
     _requireAuth(req, res, next) {
+        if (this._needsBootstrap()) return res.status(409).json({ ok: false, needsSetup: true, error: "Initial setup required" });
         if (!this._isAuthed(req)) return res.status(401).json({ ok: false });
         next();
     },
@@ -286,29 +336,118 @@ module.exports = NodeHelper.create({
 
     _checkLogin(username, password) {
         const u = String(username || "");
+        const users = this._getConfiguredUsers();
+        if (!Array.isArray(users) || !users.length) return false;
 
+        const match = users.find(x => x && x.username === u && typeof x.passHash === "string");
+        if (!match) return false;
+        return bcrypt.compareSync(password, match.passHash);
+    },
 
-        // Multi-user list from env
+    _getConfiguredUsers() {
         const usersJson = process.env.SR_USERS_JSON;
         if (usersJson) {
             try {
                 const users = JSON.parse(usersJson);
                 if (Array.isArray(users)) {
-                    const match = users.find(x => x && x.username === u && typeof x.passHash === "string");
-                    if (!match) return false;
-                    return bcrypt.compareSync(password, match.passHash);
+                    return users.filter(x => x && typeof x.username === "string" && typeof x.passHash === "string");
                 }
             } catch (_) {
-                return false;
+                return [];
             }
         }
 
-        // Single admin fallback
         const expectedUser = process.env.SR_ADMIN_USER || "";
         const passHash = process.env.SR_ADMIN_PASS_HASH || "";
-        if (!expectedUser || !passHash) return false;
-        if (u !== expectedUser) return false;
-        return bcrypt.compareSync(password, passHash);
+        if (expectedUser && passHash) {
+            return [{ username: expectedUser, passHash }];
+        }
+
+        const fileUsers = Array.isArray(this.authStore && this.authStore.users) ? this.authStore.users : [];
+        return fileUsers.filter(x => x && typeof x.username === "string" && typeof x.passHash === "string");
+    },
+
+    _hasConfiguredUsers() {
+        return this._getConfiguredUsers().length > 0;
+    },
+
+    _needsBootstrap() {
+        return !this._hasConfiguredUsers();
+    },
+
+    _getSessionSecret() {
+        const envSecret = process.env.SR_SESSION_SECRET;
+        if (envSecret && envSecret.length >= 24) return envSecret;
+        return this.authStore.sessionSecret;
+    },
+
+    _sessionSecretSource() {
+        const envSecret = process.env.SR_SESSION_SECRET;
+        return envSecret && envSecret.length >= 24 ? "env" : "file";
+    },
+
+    _authSource() {
+        if (process.env.SR_USERS_JSON) return "env_users_json";
+        if (process.env.SR_ADMIN_USER && process.env.SR_ADMIN_PASS_HASH) return "env_single_user";
+        return "file";
+    },
+
+    _loadOrCreateAuthStore() {
+        const fallback = {
+            sessionSecret: this._generateSessionSecret(),
+            users: [],
+            initializedAt: Date.now(),
+            updatedAt: Date.now()
+        };
+
+        try {
+            if (fs.existsSync(this.authFile)) {
+                const raw = fs.readFileSync(this.authFile, "utf8");
+                const parsed = JSON.parse(raw);
+                const out = {
+                    sessionSecret: (parsed && typeof parsed.sessionSecret === "string" && parsed.sessionSecret.length >= 24)
+                        ? parsed.sessionSecret
+                        : fallback.sessionSecret,
+                    users: Array.isArray(parsed && parsed.users) ? parsed.users : [],
+                    initializedAt: parsed && parsed.initializedAt ? parsed.initializedAt : Date.now(),
+                    updatedAt: Date.now()
+                };
+                const needsRewrite = !parsed || out.sessionSecret !== parsed.sessionSecret || !Array.isArray(parsed.users);
+                if (needsRewrite) {
+                    this.authStore = out;
+                    this._saveAuthStore();
+                }
+                return out;
+            }
+        } catch (_) {}
+
+        try {
+            fs.writeFileSync(this.authFile, JSON.stringify(fallback, null, 2), { encoding: "utf8", mode: 0o600 });
+        } catch (_) {}
+        return fallback;
+    },
+
+    _saveAuthStore() {
+        const payload = JSON.stringify(this.authStore, null, 2);
+        fs.writeFileSync(this.authFile, payload, { encoding: "utf8", mode: 0o600 });
+    },
+
+    _generateSessionSecret() {
+        return crypto.randomBytes(48).toString("base64url");
+    },
+
+    _validateBootstrapCredentials(username, password, confirmPassword) {
+        if (!username) return { ok: false, error: "Username is required" };
+        if (!/^[A-Za-z0-9_.-]{3,64}$/.test(username)) {
+            return { ok: false, error: "Username must be 3-64 characters and use letters, numbers, dot, dash or underscore" };
+        }
+        if (!password || password.length < 8) {
+            return { ok: false, error: "Password must be at least 8 characters" };
+        }
+        if (password !== confirmPassword) {
+            return { ok: false, error: "Passwords do not match" };
+        }
+        return { ok: true };
     },
 
     _static(dir) {
@@ -443,10 +582,22 @@ module.exports = NodeHelper.create({
         }
     },
 
+    _loadSchema(moduleName) {
+        const schemaPath = path.join(__dirname, "schemas", `${moduleName}.schema.json`);
+        if (!fs.existsSync(schemaPath)) return null;
+
+        try {
+            return JSON.parse(fs.readFileSync(schemaPath, "utf8"));
+        } catch (_) {
+            return null;
+        }
+    },
+
     _broadcastConfigUpdated(moduleName, index) {
         this.sendSocketNotification("SR_ACTION", { type: "REFRESH" });
         console.log(`[MMM-SimpleRemote] config updated: ${moduleName} @ ${index}`);
     },
+
     _logAck(id) {
         try {
             const ackFile = path.join(this.dataDir, "acks.json");
