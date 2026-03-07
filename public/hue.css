@@ -1,0 +1,72 @@
+.sr-hue-help {
+    opacity: 0.85;
+    margin-bottom: 0.75rem;
+}
+
+.sr-hue-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+}
+
+.sr-hue-card {
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 12px;
+    background: rgba(255,255,255,0.03);
+    cursor: pointer;
+    user-select: none;
+}
+
+.sr-hue-card:hover {
+    background: rgba(255,255,255,0.05);
+}
+
+.sr-hue-card.is-pending {
+    opacity: 0.7;
+}
+
+.sr-hue-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.sr-hue-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0.85;
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+}
+
+.sr-hue-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.35);
+    display: inline-block;
+}
+
+.sr-hue-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: space-between;
+}
+
+.sr-hue-controls input[type="color"] {
+    width: 44px;
+    height: 30px;
+    padding: 0;
+    border: none;
+    background: transparent;
+}
+
+.sr-hue-controls input[type="range"] {
+    width: 120px;
+}
