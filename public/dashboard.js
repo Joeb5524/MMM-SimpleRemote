@@ -48,6 +48,7 @@ function renderAlertRow(item) {
     row.className = "sr-row";
 
     const left = document.createElement("div");
+
     const t = document.createElement("div");
     t.className = "sr-row-title";
     t.textContent = item.title || "Alert";
@@ -77,12 +78,9 @@ function renderAlertRow(item) {
     return row;
 }
 
-
-
 const hueStatusEl = document.getElementById("hueStatus");
 const hueErrEl = document.getElementById("hueErr");
 const hueListEl = document.getElementById("hueList");
-
 const btnLights = document.getElementById("hueTypeLights");
 const btnGroups = document.getElementById("hueTypeGroups");
 const btnMic = document.getElementById("hueMic");
@@ -91,13 +89,15 @@ let hueType = "light";
 let hueItems = [];
 const pending = new Map();
 
-btnLights.onclick = () => setHueType("light");
-btnGroups.onclick = () => setHueType("grouped_light");
+btnLights.onclick = async () => {
+    hueType = "light";
+    await refreshHue();
+};
 
-function setHueType(t) {
-    hueType = t;
-    refreshHue();
-}
+btnGroups.onclick = async () => {
+    hueType = "grouped_light";
+    await refreshHue();
+};
 
 function setHueError(msg) {
     if (!msg) {
@@ -111,11 +111,7 @@ function setHueError(msg) {
 
 async function refreshHueStatus() {
     const res = await window.srFetch("/api/hue/status", { method: "GET" });
-    if (!res || !res.ok || !res.json) {
-        hueStatusEl.textContent = "Unavailable";
-        hueStatusEl.className = "tag is-danger is-light level-item";
-        return;
-    }
+    if (!res || !res.ok || !res.json) return;
 
     if (!res.json.configured) {
         hueStatusEl.textContent = "Not configured";
@@ -128,8 +124,6 @@ async function refreshHueStatus() {
 }
 
 async function refreshHue() {
-    setHueError(null);
-
     const res = await window.srFetch(`/api/hue/items?type=${encodeURIComponent(hueType)}`, { method: "GET" });
     if (!res || !res.ok || !res.json) return;
 
@@ -138,6 +132,7 @@ async function refreshHue() {
         return;
     }
 
+    setHueError(null);
     hueItems = Array.isArray(res.json.items) ? res.json.items : [];
     renderHueList();
 }
@@ -145,21 +140,28 @@ async function refreshHue() {
 function effectiveOn(item) {
     const p = pending.get(item.id);
     if (!p) return !!item.on;
-    if (Date.now() - p.startedAt > 3500) {
+    if (Date.now() - p.startedAt > 3000) {
         pending.delete(item.id);
         return !!item.on;
     }
     return !!p.desiredOn;
 }
 
-function effectiveHex(item) {
-    const p = pending.get(item.id);
-    if (p && p.desiredHex) return p.desiredHex;
-    return rgbCssToHex(item.rgb) || "#ffffff";
+function rgbCssToHex(rgb) {
+    if (!rgb) return "#ffffff";
+    const m = String(rgb).match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i);
+    if (!m) return "#ffffff";
+
+    const r = Number(m[1]);
+    const g = Number(m[2]);
+    const b = Number(m[3]);
+
+    return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
 
 function renderHueList() {
     hueListEl.innerHTML = "";
+
     if (!hueItems.length) {
         hueListEl.textContent = "No Hue items.";
         return;
@@ -168,9 +170,7 @@ function renderHueList() {
     for (const item of hueItems) {
         const card = document.createElement("div");
         card.className = "sr-hue-card";
-
-        const isPending = pending.has(item.id);
-        if (isPending) card.classList.add("is-pending");
+        if (pending.has(item.id)) card.classList.add("is-pending");
 
         const title = document.createElement("div");
         title.className = "sr-hue-title";
@@ -178,12 +178,12 @@ function renderHueList() {
         const name = document.createElement("div");
         name.textContent = item.name || item.id;
 
-        const stateTag = document.createElement("span");
-        stateTag.className = `tag ${effectiveOn(item) ? "is-success" : "is-light"}`;
-        stateTag.textContent = item.reachable === false ? "Offline" : (effectiveOn(item) ? "On" : "Off");
+        const state = document.createElement("span");
+        state.className = `tag ${effectiveOn(item) ? "is-success" : "is-light"}`;
+        state.textContent = effectiveOn(item) ? "On" : "Off";
 
         title.appendChild(name);
-        title.appendChild(stateTag);
+        title.appendChild(state);
 
         const meta = document.createElement("div");
         meta.className = "sr-hue-meta";
@@ -192,60 +192,51 @@ function renderHueList() {
         dot.className = "sr-hue-dot";
         dot.style.background = effectiveOn(item) && item.rgb ? item.rgb : "transparent";
 
-        const type = document.createElement("span");
-        type.textContent = hueType === "grouped_light" ? "Room/Zone" : "Light";
+        const typeLabel = document.createElement("span");
+        typeLabel.textContent = hueType === "grouped_light" ? "Room/Zone" : "Light";
 
         meta.appendChild(dot);
-        meta.appendChild(type);
+        meta.appendChild(typeLabel);
 
         const controls = document.createElement("div");
         controls.className = "sr-hue-controls";
 
         const left = document.createElement("div");
-        left.style.display = "flex";
-        left.style.alignItems = "center";
-        left.style.gap = "10px";
+        left.className = "sr-hue-controls-left";
 
         const picker = document.createElement("input");
         picker.type = "color";
-        picker.value = effectiveHex(item);
-        picker.title = "Set colour";
+        picker.value = rgbCssToHex(item.rgb);
         picker.onclick = (e) => e.stopPropagation();
         picker.onchange = async (e) => {
             e.stopPropagation();
             await setHueColour(item, picker.value);
         };
 
-        const bri = document.createElement("input");
-        bri.type = "range";
-        bri.min = "1";
-        bri.max = "100";
-        bri.value = "100";
-        bri.title = "Brightness";
-        bri.onclick = (e) => e.stopPropagation();
-
-        const applyBri = debounce(async () => {
-            await setHueBrightness(item, Number(bri.value));
-        }, 200);
-
-        bri.oninput = (e) => {
+        const range = document.createElement("input");
+        range.type = "range";
+        range.min = "1";
+        range.max = "100";
+        range.value = "100";
+        range.onclick = (e) => e.stopPropagation();
+        range.onchange = async (e) => {
             e.stopPropagation();
-            applyBri();
+            await setHueBrightness(item, Number(range.value));
         };
 
         left.appendChild(picker);
-        left.appendChild(bri);
+        left.appendChild(range);
 
-        const toggleBtn = document.createElement("button");
-        toggleBtn.className = "button is-small is-link is-light";
-        toggleBtn.textContent = effectiveOn(item) ? "Turn off" : "Turn on";
-        toggleBtn.onclick = async (e) => {
+        const toggle = document.createElement("button");
+        toggle.className = "button is-small is-light";
+        toggle.textContent = effectiveOn(item) ? "Turn off" : "Turn on";
+        toggle.onclick = async (e) => {
             e.stopPropagation();
             await toggleHue(item);
         };
 
         controls.appendChild(left);
-        controls.appendChild(toggleBtn);
+        controls.appendChild(toggle);
 
         card.appendChild(title);
         card.appendChild(meta);
@@ -260,14 +251,8 @@ function renderHueList() {
 }
 
 async function toggleHue(item) {
-    if (item.reachable === false) return;
-
-    const now = Date.now();
-    const p = pending.get(item.id);
-    if (p && now - p.startedAt < 350) return;
-
     const desiredOn = !effectiveOn(item);
-    pending.set(item.id, { startedAt: now, desiredOn });
+    pending.set(item.id, { startedAt: Date.now(), desiredOn });
     renderHueList();
 
     const res = await window.srFetch(`/api/hue/items/${encodeURIComponent(item.id)}`, {
@@ -275,114 +260,66 @@ async function toggleHue(item) {
         body: JSON.stringify({ type: hueType, on: desiredOn })
     });
 
+    pending.delete(item.id);
+
     if (!res || !res.ok || !res.json || !res.json.ok) {
-        pending.delete(item.id);
-        renderHueList();
-        setHueError((res && res.json && res.json.error) ? res.json.error : "Failed to toggle");
+        setHueError((res && res.json && res.json.error) ? res.json.error : "Failed to toggle Hue item");
     } else {
         setHueError(null);
+        await refreshHue();
     }
 }
 
 async function setHueColour(item, hex) {
-    const now = Date.now();
-    pending.set(item.id, { startedAt: now, desiredOn: true, desiredHex: hex });
+    pending.set(item.id, { startedAt: Date.now(), desiredOn: true, desiredHex: hex });
     renderHueList();
 
     const res = await window.srFetch(`/api/hue/items/${encodeURIComponent(item.id)}`, {
         method: "PUT",
-        body: JSON.stringify({ type: hueType, rgb: hex, on: true })
+        body: JSON.stringify({ type: hueType, on: true, rgb: hex })
     });
 
+    pending.delete(item.id);
+
     if (!res || !res.ok || !res.json || !res.json.ok) {
-        pending.delete(item.id);
-        renderHueList();
         setHueError((res && res.json && res.json.error) ? res.json.error : "Failed to set colour");
     } else {
         setHueError(null);
+        await refreshHue();
     }
 }
 
 async function setHueBrightness(item, briPct) {
     const res = await window.srFetch(`/api/hue/items/${encodeURIComponent(item.id)}`, {
         method: "PUT",
-        body: JSON.stringify({ type: hueType, briPct: briPct, on: effectiveOn(item) })
+        body: JSON.stringify({ type: hueType, on: effectiveOn(item), briPct })
     });
 
     if (!res || !res.ok || !res.json || !res.json.ok) {
         setHueError((res && res.json && res.json.error) ? res.json.error : "Failed to set brightness");
     } else {
         setHueError(null);
+        await refreshHue();
     }
 }
-
-function rgbCssToHex(rgb) {
-    if (!rgb) return null;
-    const m = String(rgb).match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i);
-    if (!m) return null;
-    const r = clamp8(m[1]), g = clamp8(m[2]), b = clamp8(m[3]);
-    const n = (r << 16) | (g << 8) | b;
-    return "#" + n.toString(16).padStart(6, "0");
-}
-
-function clamp8(n) {
-    return Math.max(0, Math.min(255, Math.round(Number(n) || 0)));
-}
-
-function debounce(fn, ms) {
-    let t = null;
-    return function () {
-        if (t) clearTimeout(t);
-        t = setTimeout(() => fn.apply(null, arguments), ms);
-    };
-}
-
-
-
-let es = null;
-
-function attachHueStream() {
-    if (es) {
-        try { es.close(); } catch (_) {}
-        es = null;
-    }
-
-    es = new EventSource(`${window.SR_BASE}/api/hue/stream`);
-
-    es.addEventListener("status", () => refreshHueStatus().catch(() => {}));
-    es.addEventListener("hue", (ev) => {
-        try {
-            const msg = JSON.parse(ev.data);
-            if (msg && msg.type === hueType && Array.isArray(msg.items)) {
-                hueItems = msg.items;
-                renderHueList();
-            }
-        } catch (_) {}
-    });
-
-    es.onerror = () => {
-        // If SSE fails, polling still keeps things usable
-    };
-}
-
-
 
 btnMic.onclick = async () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-        setHueError("SpeechRecognition not supported in this browser.");
+        setHueError("Speech recognition is not supported in this browser.");
         return;
     }
-
-    setHueError(null);
 
     const rec = new SpeechRecognition();
     rec.lang = "en-GB";
     rec.interimResults = false;
     rec.maxAlternatives = 1;
 
-    rec.onresult = async (e) => {
-        const text = e.results && e.results[0] && e.results[0][0] ? e.results[0][0].transcript : "";
+    rec.onresult = async (event) => {
+        const text = event.results && event.results[0] && event.results[0][0]
+            ? event.results[0][0].transcript
+            : "";
+
         if (!text) return;
 
         const res = await window.srFetch("/api/hue/command", {
@@ -394,21 +331,20 @@ btnMic.onclick = async () => {
             setHueError((res && res.json && res.json.error) ? res.json.error : "Voice command failed");
         } else {
             setHueError(null);
+            await refreshHue();
         }
     };
 
-    rec.onerror = () => setHueError("Voice error or permission denied.");
+    rec.onerror = () => setHueError("Voice recognition failed.");
     rec.start();
 };
 
-
-async function bootstrap() {
+async function init() {
     await refreshAlerts();
     await refreshHueStatus();
     await refreshHue();
-    attachHueStream();
-    setInterval(refreshAlerts, 4000);
-    setInterval(refreshHue, 6000);
 }
 
-bootstrap().catch(() => {});
+init();
+setInterval(refreshAlerts, 4000);
+setInterval(refreshHue, 6000);
