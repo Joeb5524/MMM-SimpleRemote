@@ -24,6 +24,7 @@ Module.register("MMM-SimpleRemote", {
 
         this.queue = [];
         this.active = null;
+        this._lastActiveId = null;
 
         this.sendSocketNotification("SR_INIT", {
             basePath: this.config.basePath,
@@ -34,6 +35,18 @@ Module.register("MMM-SimpleRemote", {
 
     getStyles() {
         return ["MMM-SimpleRemote.css"];
+    },
+
+    notificationReceived(notification) {
+        if (notification === "SR_ACK_ACTIVE_REQUEST") {
+            if (!this.active || !this.active.id) return;
+            this.sendSocketNotification("SR_ACK_ACTIVE", { id: this.active.id });
+            return;
+        }
+
+        if (notification === "SR_DISMISS_ACTIVE_REQUEST") {
+            this.sendSocketNotification("SR_DISMISS_ACTIVE", {});
+        }
     },
 
     getDom() {
@@ -84,12 +97,37 @@ Module.register("MMM-SimpleRemote", {
         if (notification === "SR_ALERTS_SYNC") {
             this.queue = Array.isArray(payload.queue) ? payload.queue : [];
             if (!this.active && this.queue.length) this.active = this.queue.shift();
+            this._syncAlertNotifications();
             this.updateDom(0);
+            return;
         }
 
         if (notification === "SR_ACTIVE_CHANGED") {
             this.active = payload && payload.active ? payload.active : null;
+            this._syncAlertNotifications();
             this.updateDom(0);
         }
+    },
+
+    _syncAlertNotifications() {
+        const currentId = this.active && this.active.id ? String(this.active.id) : null;
+
+        if (currentId && currentId !== this._lastActiveId) {
+            this.sendNotification("REMOTE_ALERT_SENT", {
+                alertId: currentId,
+                active: this.active
+            });
+        }
+
+        if (!currentId && this._lastActiveId) {
+            this.sendNotification("REMOTE_ALERT_ACK", {
+                alertId: this._lastActiveId
+            });
+            this.sendNotification("REMOTE_ALERT_CLEARED", {
+                alertId: this._lastActiveId
+            });
+        }
+
+        this._lastActiveId = currentId;
     }
 });
