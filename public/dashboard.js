@@ -22,6 +22,7 @@ document.getElementById("send").onclick = async () => {
         sent.style.display = "block";
         document.getElementById("message").value = "";
         await refreshAlerts();
+    await refreshCareAlerts();
     } else {
         sendErr.style.display = "block";
     }
@@ -30,7 +31,89 @@ document.getElementById("send").onclick = async () => {
 document.getElementById("clear").onclick = async () => {
     await window.srFetch("/api/alerts/clear", { method: "POST" });
     await refreshAlerts();
+    await refreshCareAlerts();
 };
+
+const careCount = document.getElementById("careCount");
+
+document.getElementById("careRefresh").onclick = async () => {
+    await refreshCareAlerts();
+};
+
+document.getElementById("careClear").onclick = async () => {
+    await window.srFetch("/api/care-alerts/clear", { method: "POST" });
+    await refreshCareAlerts();
+};
+
+async function refreshCareAlerts() {
+    const res = await window.srFetch("/api/care-alerts", { method: "GET" });
+    if (!res || !res.ok || !res.json) return;
+
+    const q = document.getElementById("careQueue");
+    q.innerHTML = "";
+
+    const items = res.json.items || [];
+    careCount.textContent = String(items.filter(i => i && !i.acknowledgedAt).length);
+
+    items
+        .slice()
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+        .forEach(item => q.appendChild(renderCareAlertRow(item)));
+}
+
+function renderCareAlertRow(item) {
+    const row = document.createElement("div");
+    row.className = "sr-row";
+
+    const left = document.createElement("div");
+
+    const t = document.createElement("div");
+    t.className = "sr-row-title";
+    t.textContent = item.title || "Mirror alert";
+
+    const m = document.createElement("div");
+    m.className = "sr-row-msg";
+    m.textContent = item.message || "";
+
+    const meta = document.createElement("div");
+    meta.className = "sr-chip";
+    meta.textContent = item.createdAt ? new Date(item.createdAt).toLocaleString() : "";
+
+    left.appendChild(t);
+    left.appendChild(m);
+    left.appendChild(meta);
+
+    const right = document.createElement("div");
+    right.className = "buttons";
+
+    const ack = document.createElement("button");
+    ack.className = "button is-small " + (item.acknowledgedAt ? "is-success is-light" : "is-success");
+    ack.textContent = item.acknowledgedAt ? "Acknowledged" : "Acknowledge";
+    ack.disabled = !!item.acknowledgedAt;
+
+    ack.onclick = async () => {
+        if (!item.id) return;
+        await window.srFetch(`/api/care-alerts/ack/${encodeURIComponent(item.id)}`, { method: "POST" });
+        await refreshCareAlerts();
+    };
+
+    const del = document.createElement("button");
+    del.className = "button is-small is-light";
+    del.textContent = "Delete";
+    del.onclick = async () => {
+        if (!item.id) return;
+        await window.srFetch(`/api/care-alerts/${encodeURIComponent(item.id)}`, { method: "DELETE" });
+        await refreshCareAlerts();
+    };
+
+    right.appendChild(ack);
+    right.appendChild(del);
+
+    row.appendChild(left);
+    row.appendChild(right);
+
+    return row;
+}
 
 async function refreshAlerts() {
     const res = await window.srFetch("/api/alerts", { method: "GET" });
@@ -71,6 +154,7 @@ function renderAlertRow(item) {
     del.onclick = async () => {
         await window.srFetch(`/api/alerts/${encodeURIComponent(item.id)}`, { method: "DELETE" });
         await refreshAlerts();
+    await refreshCareAlerts();
     };
 
     row.appendChild(left);
@@ -341,10 +425,12 @@ btnMic.onclick = async () => {
 
 async function init() {
     await refreshAlerts();
+    await refreshCareAlerts();
     await refreshHueStatus();
     await refreshHue();
 }
 
 init();
 setInterval(refreshAlerts, 4000);
+setInterval(refreshCareAlerts, 5000);
 setInterval(refreshHue, 6000);

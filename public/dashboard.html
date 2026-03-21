@@ -125,7 +125,27 @@
             </div>
         </div>
 
+        
         <div class="box sr-box mt-5">
+            <div class="level">
+                <div class="level-left">
+                    <h2 class="title is-5 level-item">Incoming alerts (from mirror)</h2>
+                    <span id="careCount" class="tag is-light level-item">0</span>
+                </div>
+                <div class="level-right">
+                    <div class="buttons">
+                        <button id="careRefresh" class="button is-small is-light">Refresh</button>
+                        <button id="careClear" class="button is-small is-danger is-light">Clear</button>
+                    </div>
+                </div>
+            </div>
+
+            <p class="mb-3 sr-muted">These are alerts sent from the mirror user. Acknowledge to mark as handled.</p>
+
+            <div id="careQueue"></div>
+        </div>
+
+<div class="box sr-box mt-5">
             <div class="level">
                 <div class="level-left">
                     <h2 class="title is-5 level-item">Hue</h2>

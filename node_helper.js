@@ -17,12 +17,14 @@ module.exports = NodeHelper.create({
 
         this.dataDir = path.join(__dirname, "data");
         this.alertsFile = path.join(this.dataDir, "alerts.json");
+        this.careAlertsFile = path.join(this.dataDir, "care_alerts.json");
         this.authFile = path.join(this.dataDir, "auth.json");
 
         this._ensureDir(this.dataDir);
 
         this.authStore = this._loadOrCreateAuthStore();
         this.queue = this._loadAlerts();
+        this.careQueue = this._loadCareAlerts();
         this.active = null;
         this.activeUntil = 0;
 
@@ -60,6 +62,30 @@ module.exports = NodeHelper.create({
             this._broadcastActive();
             this._tickQueue();
         }
+
+        if (notification === "SR_CARE_ALERT_CREATE" && payload) {
+            const title = this._cleanText(payload.title, 80) || "Mirror alert";
+            const message = this._cleanText(payload.message, 2000) || "Assistance requested from the mirror.";
+            const level = this._cleanText(payload.level, 30) || "help";
+
+            const item = {
+                id: this._id(),
+                title,
+                message,
+                level,
+                createdAt: Date.now(),
+                acknowledgedAt: null
+            };
+
+            this.careQueue.push(item);
+
+            const maxCare = Math.max(50, Number(this.maxQueue) || 25);
+            while (this.careQueue.length > maxCare) this.careQueue.shift();
+
+            this._saveCareAlerts();
+            this.sendSocketNotification("SR_CARE_ALERT_CREATED", { item, requestId: payload.requestId || null });
+        }
+
     },
 
     _loadHueEnv() {
@@ -94,7 +120,7 @@ module.exports = NodeHelper.create({
             cookie: {
                 httpOnly: true,
                 sameSite: "lax",
-                secure: true
+                secure: "auto"
             }
         }));
 
@@ -241,6 +267,41 @@ module.exports = NodeHelper.create({
             this._broadcastSync();
             this._broadcastActive();
             this.sendSocketNotification("SR_ACTION", { type: "REFRESH" });
+            res.json({ ok: true });
+        });
+
+        app.get(`${this.basePath}/api/care-alerts`, this._requireAuth.bind(this), (req, res) => {
+            res.json({ ok: true, items: this.careQueue });
+        });
+
+        app.post(`${this.basePath}/api/care-alerts/ack/:id`, this._requireAuth.bind(this), (req, res) => {
+            const id = String(req.params.id || "");
+            let changed = false;
+
+            this.careQueue = this.careQueue.map((a) => {
+                if (a && a.id === id && !a.acknowledgedAt) {
+                    changed = true;
+                    return { ...a, acknowledgedAt: Date.now() };
+                }
+                return a;
+            });
+
+            if (changed) this._saveCareAlerts();
+            res.json({ ok: true, changed });
+        });
+
+        app.delete(`${this.basePath}/api/care-alerts/:id`, this._requireAuth.bind(this), (req, res) => {
+            const id = String(req.params.id || "");
+            const before = this.careQueue.length;
+            this.careQueue = this.careQueue.filter((a) => a && a.id !== id);
+
+            if (this.careQueue.length !== before) this._saveCareAlerts();
+            res.json({ ok: true });
+        });
+
+        app.post(`${this.basePath}/api/care-alerts/clear`, this._requireAuth.bind(this), (req, res) => {
+            this.careQueue = [];
+            this._saveCareAlerts();
             res.json({ ok: true });
         });
 
@@ -558,6 +619,24 @@ module.exports = NodeHelper.create({
             fs.writeFileSync(this.alertsFile, JSON.stringify(this.queue, null, 2), "utf8");
         } catch (_) {}
     },
+
+    _loadCareAlerts() {
+        try {
+            if (!fs.existsSync(this.careAlertsFile)) return [];
+            const raw = fs.readFileSync(this.careAlertsFile, "utf8");
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (_) {
+            return [];
+        }
+    },
+
+    _saveCareAlerts() {
+        try {
+            fs.writeFileSync(this.careAlertsFile, JSON.stringify(this.careQueue, null, 2), "utf8");
+        } catch (_) {}
+    },
+
 
     _broadcastSync() {
         this.sendSocketNotification("SR_ALERTS_SYNC", { queue: this.queue });
