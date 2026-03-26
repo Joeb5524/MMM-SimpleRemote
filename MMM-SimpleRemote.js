@@ -4,7 +4,6 @@ Module.register("MMM-SimpleRemote", {
     defaults: {
         basePath: "/mm-simple-remote",
         maxQueue: 25,
-        mirrorToken: "",
         showTimestamp: true,
         dismissOnTouch: true,
 
@@ -39,32 +38,15 @@ Module.register("MMM-SimpleRemote", {
         return ["MMM-SimpleRemote.css"];
     },
 
-    notificationReceived(notification, payload) {
+    notificationReceived(notification) {
         if (notification === "SR_ACK_ACTIVE_REQUEST") {
             if (!this.active || !this.active.id) return;
-            this.sendSocketNotification("SR_ACK_ACTIVE", { id: this.active.id });
+            this.sendSocketNotification("SR_ACK_ACTIVE", {id: this.active.id});
             return;
         }
 
         if (notification === "SR_DISMISS_ACTIVE_REQUEST") {
             this.sendSocketNotification("SR_DISMISS_ACTIVE", {});
-            return;
-        }
-
-        if (notification === "SR_CARE_ALERT") {
-            const title = payload && typeof payload.title === "string" ? payload.title : "Mirror alert";
-            const message = payload && typeof payload.message === "string"
-                ? payload.message
-                : "Assistance requested from the mirror.";
-
-            this.sendSocketNotification("SR_CARE_ALERT_CREATE", {
-                title,
-                message,
-                level: payload && payload.level ? String(payload.level) : "help",
-                requestId: payload && payload.requestId ? String(payload.requestId) : null
-            });
-
-            this.sendNotification("SR_CARE_ALERT_SENT", { title, message, at: Date.now() });
         }
     },
 
@@ -103,7 +85,7 @@ Module.register("MMM-SimpleRemote", {
         if (this.config.dismissOnTouch) {
             wrapper.onclick = () => {
                 if (!this.active || !this.active.id) return;
-                this.sendSocketNotification("SR_ACK_ACTIVE", { id: this.active.id });
+                this.sendSocketNotification("SR_ACK_ACTIVE", {id: this.active.id});
                 this.active = null;
                 this.updateDom(0);
             };
@@ -125,24 +107,6 @@ Module.register("MMM-SimpleRemote", {
             this.active = payload && payload.active ? payload.active : null;
             this._syncAlertNotifications();
             this.updateDom(0);
-            return;
-        }
-
-        if (notification === "SR_CARE_ALERT_CREATED" && payload && payload.item) {
-            this.sendNotification("SR_CARE_ALERT_STORED", {
-                item: payload.item,
-                requestId: payload.requestId || null
-            });
-        }
-
-        if (notification === "SR_RTC_SESSION_CREATED") {
-            this.sendNotification("SR_RTC_SESSION_CREATED", payload || {});
-            return;
-        }
-
-        if (notification === "SR_RTC_CARER") {
-            this.sendNotification("SR_RTC_CARER", payload || {});
-            return;
         }
     },
 

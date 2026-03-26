@@ -22,7 +22,6 @@ document.getElementById("send").onclick = async () => {
         sent.style.display = "block";
         document.getElementById("message").value = "";
         await refreshAlerts();
-    await refreshCareAlerts();
     } else {
         sendErr.style.display = "block";
     }
@@ -31,89 +30,7 @@ document.getElementById("send").onclick = async () => {
 document.getElementById("clear").onclick = async () => {
     await window.srFetch("/api/alerts/clear", { method: "POST" });
     await refreshAlerts();
-    await refreshCareAlerts();
 };
-
-const careCount = document.getElementById("careCount");
-
-document.getElementById("careRefresh").onclick = async () => {
-    await refreshCareAlerts();
-};
-
-document.getElementById("careClear").onclick = async () => {
-    await window.srFetch("/api/care-alerts/clear", { method: "POST" });
-    await refreshCareAlerts();
-};
-
-async function refreshCareAlerts() {
-    const res = await window.srFetch("/api/care-alerts", { method: "GET" });
-    if (!res || !res.ok || !res.json) return;
-
-    const q = document.getElementById("careQueue");
-    q.innerHTML = "";
-
-    const items = res.json.items || [];
-    careCount.textContent = String(items.filter(i => i && !i.acknowledgedAt).length);
-
-    items
-        .slice()
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-        .forEach(item => q.appendChild(renderCareAlertRow(item)));
-}
-
-function renderCareAlertRow(item) {
-    const row = document.createElement("div");
-    row.className = "sr-row";
-
-    const left = document.createElement("div");
-
-    const t = document.createElement("div");
-    t.className = "sr-row-title";
-    t.textContent = item.title || "Mirror alert";
-
-    const m = document.createElement("div");
-    m.className = "sr-row-msg";
-    m.textContent = item.message || "";
-
-    const meta = document.createElement("div");
-    meta.className = "sr-chip";
-    meta.textContent = item.createdAt ? new Date(item.createdAt).toLocaleString() : "";
-
-    left.appendChild(t);
-    left.appendChild(m);
-    left.appendChild(meta);
-
-    const right = document.createElement("div");
-    right.className = "buttons";
-
-    const ack = document.createElement("button");
-    ack.className = "button is-small " + (item.acknowledgedAt ? "is-success is-light" : "is-success");
-    ack.textContent = item.acknowledgedAt ? "Acknowledged" : "Acknowledge";
-    ack.disabled = !!item.acknowledgedAt;
-
-    ack.onclick = async () => {
-        if (!item.id) return;
-        await window.srFetch(`/api/care-alerts/ack/${encodeURIComponent(item.id)}`, { method: "POST" });
-        await refreshCareAlerts();
-    };
-
-    const del = document.createElement("button");
-    del.className = "button is-small is-light";
-    del.textContent = "Delete";
-    del.onclick = async () => {
-        if (!item.id) return;
-        await window.srFetch(`/api/care-alerts/${encodeURIComponent(item.id)}`, { method: "DELETE" });
-        await refreshCareAlerts();
-    };
-
-    right.appendChild(ack);
-    right.appendChild(del);
-
-    row.appendChild(left);
-    row.appendChild(right);
-
-    return row;
-}
 
 async function refreshAlerts() {
     const res = await window.srFetch("/api/alerts", { method: "GET" });
@@ -154,375 +71,11 @@ function renderAlertRow(item) {
     del.onclick = async () => {
         await window.srFetch(`/api/alerts/${encodeURIComponent(item.id)}`, { method: "DELETE" });
         await refreshAlerts();
-    await refreshCareAlerts();
     };
 
     row.appendChild(left);
     row.appendChild(del);
     return row;
-}
-
-
-// --- Audio call (WebRTC) ---
-const rtcStatusEl = document.getElementById("rtcStatus");
-const rtcErrEl = document.getElementById("rtcErr");
-const rtcListEl = document.getElementById("rtcList");
-const rtcRemoteAudioEl = document.getElementById("rtcRemoteAudio");
-
-const rtcState = {
-    sessionId: null,
-    pc: null,
-    localStream: null,
-    iceSince: 0,
-    iceTimer: null,
-    answerTimer: null,
-    pendingLocalIce: []
-};
-
-document.getElementById("rtcCall").onclick = async () => {
-    await callMirrorRtc();
-};
-
-document.getElementById("rtcRefresh").onclick = async () => {
-    await refreshRtc();
-};
-
-document.getElementById("rtcHangup").onclick = async () => {
-    await hangupRtc("carer_hangup");
-};
-
-function setRtcError(msg) {
-    if (!msg) {
-        rtcErrEl.style.display = "none";
-        rtcErrEl.textContent = "";
-        return;
-    }
-    rtcErrEl.style.display = "block";
-    rtcErrEl.textContent = msg;
-}
-
-function setRtcStatus(text, isActive) {
-    rtcStatusEl.textContent = text || "Idle";
-    rtcStatusEl.className = `tag level-item ${isActive ? "is-success" : "is-light"}`;
-}
-
-function renderRtcSessionRow(item) {
-    const row = document.createElement("div");
-    row.className = "sr-row";
-
-    const left = document.createElement("div");
-    const t = document.createElement("div");
-    t.className = "sr-row-title";
-    t.textContent = `Session ${item.id}`;
-
-    const meta = document.createElement("div");
-    meta.className = "sr-chip";
-    const ageSec = Math.floor((item.ageMs || 0) / 1000);
-    const who = item.caller === "carer" ? "Outgoing" : "Incoming";
-    meta.textContent = item.endedAt ? `Ended (${ageSec}s)` : item.hasAnswer ? `In call (${ageSec}s)` : `${who} (${ageSec}s)`;
-
-    left.appendChild(t);
-    left.appendChild(meta);
-
-    const right = document.createElement("div");
-    right.className = "buttons";
-
-    if (!item.endedAt && item.hasOffer && !item.hasAnswer && (item.caller || "mirror") === "mirror") {
-        const ans = document.createElement("button");
-        ans.className = "button is-small is-primary";
-        ans.textContent = "Answer";
-        ans.onclick = async () => {
-            await answerRtc(item.id);
-        };
-        right.appendChild(ans);
-    }
-
-    if (!item.endedAt) {
-        const end = document.createElement("button");
-        end.className = "button is-small is-danger";
-        end.textContent = "End";
-        end.onclick = async () => {
-            await endRtcSession(item.id, "ended_from_dashboard");
-            await refreshRtc();
-        };
-        right.appendChild(end);
-    }
-
-    row.appendChild(left);
-    row.appendChild(right);
-    return row;
-}
-
-async function refreshRtc() {
-    try {
-        setRtcError(null);
-        const res = await window.srFetch("/api/rtc/sessions", { method: "GET" });
-        if (!res || !res.ok || !res.json) return;
-
-        const items = (res.json.items || []).filter((x) => x && x.hasOffer && !x.endedAt);
-        rtcListEl.innerHTML = "";
-        if (!items.length) {
-            const empty = document.createElement("p");
-            empty.className = "help";
-            empty.textContent = "No active calls.";
-            rtcListEl.appendChild(empty);
-            if (!rtcState.sessionId) setRtcStatus("Idle", false);
-            return;
-        }
-
-        items.forEach((it) => rtcListEl.appendChild(renderRtcSessionRow(it)));
-        if (!rtcState.sessionId) setRtcStatus("Incoming", false);
-    } catch (e) {
-        setRtcError("Failed to load RTC sessions.");
-    }
-}
-
-async function answerRtc(sessionId) {
-    if (rtcState.sessionId && rtcState.sessionId !== sessionId) {
-        await hangupRtc("switch_session");
-    }
-
-    rtcState.sessionId = sessionId;
-    rtcState.iceSince = 0;
-    rtcState.pendingLocalIce = [];
-
-    setRtcError(null);
-    setRtcStatus("Answering…", false);
-
-    const offerRes = await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(sessionId)}/offer`, { method: "GET" });
-    if (!offerRes || !offerRes.ok || !offerRes.json || !offerRes.json.sdp) {
-        setRtcError("Offer missing / expired.");
-        rtcState.sessionId = null;
-        return;
-    }
-
-    const offer = offerRes.json.sdp;
-
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
-    rtcState.pc = pc;
-
-    let stream = null;
-    try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        rtcState.localStream = stream;
-        stream.getTracks().forEach((t) => pc.addTrack(t, stream));
-        pc.addTransceiver("audio", { direction: "sendrecv" });
-    } catch (e) {
-        // Listen-only fallback (common if not HTTPS).
-        pc.addTransceiver("audio", { direction: "recvonly" });
-    }
-
-    pc.ontrack = (evt) => {
-        if (!evt || !evt.streams || !evt.streams[0]) return;
-        rtcRemoteAudioEl.srcObject = evt.streams[0];
-    };
-
-    pc.onicecandidate = async (evt) => {
-        if (!evt || !evt.candidate) return;
-        await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(sessionId)}/ice`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ candidate: evt.candidate })
-        });
-    };
-
-    pc.onconnectionstatechange = () => {
-        const s = pc.connectionState;
-        if (s === "connected") setRtcStatus("In call", true);
-        if (s === "failed" || s === "disconnected") setRtcStatus(`Connection ${s}`, false);
-        if (s === "closed") setRtcStatus("Idle", false);
-    };
-
-    await pc.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-
-    await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(sessionId)}/answer`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sdp: pc.localDescription })
-    });
-
-    setRtcStatus("Connecting…", false);
-
-    rtcState.iceTimer = setInterval(async () => {
-        await pollMirrorIce(sessionId);
-    }, 800);
-}
-
-async function pollMirrorIce(sessionId) {
-    if (!rtcState.sessionId || rtcState.sessionId !== sessionId) return;
-    if (!rtcState.pc) return;
-
-    const res = await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(sessionId)}/ice?since=${rtcState.iceSince}`, { method: "GET" });
-    if (!res || !res.ok || !res.json) return;
-
-    const items = res.json.items || [];
-    for (const it of items) {
-        if (!it || !it.candidate) continue;
-        try {
-            await rtcState.pc.addIceCandidate(new RTCIceCandidate(it.candidate));
-        } catch (e) {}
-    }
-
-    rtcState.iceSince = Number(res.json.nextSince || (rtcState.iceSince + items.length)) || rtcState.iceSince;
-}
-
-
-async function callMirrorRtc() {
-    if (rtcState.sessionId) {
-        await hangupRtc("switch_session");
-    }
-
-    rtcState.iceSince = 0;
-    rtcState.pendingLocalIce = [];
-    rtcState.pendingLocalIce = [];
-
-    setRtcError(null);
-    setRtcStatus("Calling…", false);
-
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
-    rtcState.pc = pc;
-
-    let stream = null;
-    try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        rtcState.localStream = stream;
-        stream.getTracks().forEach((t) => pc.addTrack(t, stream));
-        pc.addTransceiver("audio", { direction: "sendrecv" });
-    } catch (e) {
-        // Listen-only fallback.
-        pc.addTransceiver("audio", { direction: "recvonly" });
-    }
-
-    pc.ontrack = (evt) => {
-        if (!evt || !evt.streams || !evt.streams[0]) return;
-        rtcRemoteAudioEl.srcObject = evt.streams[0];
-    };
-
-    pc.onicecandidate = async (evt) => {
-        if (!evt || !evt.candidate) return;
-
-        if (!rtcState.sessionId) {
-            rtcState.pendingLocalIce.push(evt.candidate);
-            while (rtcState.pendingLocalIce.length > 250) rtcState.pendingLocalIce.shift();
-            return;
-        }
-
-        await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(rtcState.sessionId)}/ice`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ candidate: evt.candidate })
-        });
-    };
-
-    pc.onconnectionstatechange = () => {
-        const s = pc.connectionState;
-        if (s === "connected") setRtcStatus("In call", true);
-        if (s === "failed" || s === "disconnected") setRtcStatus(`Connection ${s}`, false);
-        if (s === "closed") setRtcStatus("Idle", false);
-    };
-
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-
-    const res = await window.srFetch("/api/rtc/call", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mode: "audio", sdp: pc.localDescription })
-    });
-
-    if (!res || !res.ok || !res.json || !res.json.sessionId) {
-        setRtcError("Failed to start call.");
-        await hangupRtc("call_failed");
-        return;
-    }
-
-    rtcState.sessionId = String(res.json.sessionId);
-
-    const pending = Array.isArray(rtcState.pendingLocalIce) ? rtcState.pendingLocalIce : [];
-    rtcState.pendingLocalIce = [];
-    for (const c of pending) {
-        await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(rtcState.sessionId)}/ice`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ candidate: c })
-        });
-    }
-
-    setRtcStatus("Ringing…", false);
-
-    rtcState.answerTimer = setInterval(async () => {
-        await pollAnswer(rtcState.sessionId);
-    }, 900);
-
-    rtcState.iceTimer = setInterval(async () => {
-        await pollMirrorIce(rtcState.sessionId);
-    }, 800);
-}
-
-async function pollAnswer(sessionId) {
-    if (!rtcState.sessionId || rtcState.sessionId !== sessionId) return;
-    if (!rtcState.pc) return;
-
-    const res = await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(sessionId)}/answer`, { method: "GET" });
-    if (!res || !res.ok || !res.json) return;
-
-    if (res.json.declinedAt || res.json.endedAt) {
-        setRtcError("Call declined / ended.");
-        await hangupRtc("declined");
-        return;
-    }
-
-    if (!res.json.sdp) return;
-
-    if (rtcState.answerTimer) clearInterval(rtcState.answerTimer);
-    rtcState.answerTimer = null;
-
-    try {
-        await rtcState.pc.setRemoteDescription(new RTCSessionDescription(res.json.sdp));
-        setRtcStatus("Connecting…", false);
-    } catch (e) {
-        setRtcError("Failed to apply answer.");
-        await hangupRtc("bad_answer");
-    }
-}
-
-async function endRtcSession(sessionId, reason) {
-    await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(sessionId)}/end`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ reason: reason || "ended" })
-    });
-}
-
-async function hangupRtc(reason) {
-    try {
-        if (rtcState.iceTimer) clearInterval(rtcState.iceTimer);
-        rtcState.iceTimer = null;
-
-        if (rtcState.answerTimer) clearInterval(rtcState.answerTimer);
-        rtcState.answerTimer = null;
-
-        if (rtcState.localStream) {
-            rtcState.localStream.getTracks().forEach((t) => {
-                try { t.stop(); } catch (e) {}
-            });
-        }
-
-        if (rtcState.pc) rtcState.pc.close();
-    } catch (e) {}
-
-    if (rtcState.sessionId) await endRtcSession(rtcState.sessionId, reason || "hangup");
-
-    rtcState.sessionId = null;
-    rtcState.pc = null;
-    rtcState.localStream = null;
-    rtcState.iceSince = 0;
-    rtcState.pendingLocalIce = [];
-    rtcRemoteAudioEl.srcObject = null;
-
-    setRtcStatus("Idle", false);
 }
 
 const hueStatusEl = document.getElementById("hueStatus");
@@ -788,14 +341,454 @@ btnMic.onclick = async () => {
 
 async function init() {
     await refreshAlerts();
-    await refreshCareAlerts();
     await refreshHueStatus();
     await refreshHue();
-    await refreshRtc();
 }
 
 init();
 setInterval(refreshAlerts, 4000);
-setInterval(refreshCareAlerts, 5000);
 setInterval(refreshHue, 6000);
-setInterval(refreshRtc, 2000);
+
+
+// --- Care alerts (from mirror) ---
+const careListEl = document.getElementById("careList");
+const careErrEl = document.getElementById("careErr");
+
+function setCareError(msg) {
+    if (!careErrEl) return;
+    if (!msg) {
+        careErrEl.style.display = "none";
+        careErrEl.textContent = "";
+        return;
+    }
+    careErrEl.style.display = "block";
+    careErrEl.textContent = msg;
+}
+
+function renderCareRow(item) {
+    const row = document.createElement("div");
+    row.className = "sr-row";
+
+    const left = document.createElement("div");
+    const title = document.createElement("div");
+    title.className = "sr-row-title";
+    title.textContent = item.level ? `${item.level.toUpperCase()}: ${item.message}` : item.message;
+
+    const meta = document.createElement("div");
+    meta.className = "sr-row-meta";
+    const ts = item.createdAt ? new Date(item.createdAt).toLocaleString() : "";
+    const dev = item.device ? ` • ${item.device}` : "";
+    const ack = item.acknowledgedAt ? " • ack" : "";
+    meta.textContent = `${ts}${dev}${ack}`;
+
+    left.appendChild(title);
+    left.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "sr-row-actions";
+
+    const ackBtn = document.createElement("button");
+    ackBtn.className = "button is-small is-success is-light";
+    ackBtn.textContent = item.acknowledgedAt ? "Acknowledged" : "Acknowledge";
+    ackBtn.disabled = !!item.acknowledgedAt;
+    ackBtn.onclick = async () => {
+        await window.srFetch(`/api/care-alerts/ack/${encodeURIComponent(item.id)}`, { method: "POST" });
+        await refreshCareAlerts();
+    };
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "button is-small is-danger is-light";
+    delBtn.textContent = "Delete";
+    delBtn.onclick = async () => {
+        await window.srFetch(`/api/care-alerts/${encodeURIComponent(item.id)}`, { method: "DELETE" });
+        await refreshCareAlerts();
+    };
+
+    actions.appendChild(ackBtn);
+    actions.appendChild(delBtn);
+
+    row.appendChild(left);
+    row.appendChild(actions);
+    return row;
+}
+
+async function refreshCareAlerts() {
+    if (!careListEl) return;
+    try {
+        setCareError(null);
+        const res = await window.srFetch("/api/care-alerts", { method: "GET" });
+        if (!res || !res.ok || !res.json) return;
+
+        const items = Array.isArray(res.json.items) ? res.json.items : [];
+        careListEl.innerHTML = "";
+        if (!items.length) {
+            const p = document.createElement("p");
+            p.className = "help";
+            p.textContent = "No care alerts.";
+            careListEl.appendChild(p);
+            return;
+        }
+        items.forEach((it) => careListEl.appendChild(renderCareRow(it)));
+    } catch (e) {
+        setCareError("Failed to load care alerts.");
+    }
+}
+
+const careRefreshBtn = document.getElementById("careRefresh");
+if (careRefreshBtn) careRefreshBtn.onclick = async () => refreshCareAlerts();
+
+const careClearBtn = document.getElementById("careClear");
+if (careClearBtn) careClearBtn.onclick = async () => {
+    await window.srFetch("/api/care-alerts/clear", { method: "POST" });
+    await refreshCareAlerts();
+};
+
+if (careListEl) {
+    refreshCareAlerts();
+    setInterval(refreshCareAlerts, 2500);
+}
+
+
+// --- Audio call (WebRTC) ---
+const rtcStatusEl = document.getElementById("rtcStatus");
+const rtcErrEl = document.getElementById("rtcErr");
+const rtcListEl = document.getElementById("rtcList");
+const rtcRemoteAudioEl = document.getElementById("rtcRemoteAudio");
+
+const rtcState = {
+    sessionId: null,
+    pc: null,
+    localStream: null,
+    iceSince: 0,
+    iceTimer: null,
+    answerTimer: null,
+    pendingLocalIce: [],
+    incomingOffer: null
+};
+
+function setRtcError(msg) {
+    if (!rtcErrEl) return;
+    if (!msg) {
+        rtcErrEl.style.display = "none";
+        rtcErrEl.textContent = "";
+        return;
+    }
+    rtcErrEl.style.display = "block";
+    rtcErrEl.textContent = msg;
+}
+
+function setRtcStatus(text, isActive) {
+    if (!rtcStatusEl) return;
+    rtcStatusEl.textContent = text || "Idle";
+    rtcStatusEl.className = `tag level-item ${isActive ? "is-success" : "is-light"}`;
+}
+
+function safePlayAudio(el) {
+    if (!el) return;
+    try { el.play().catch(() => {}); } catch (_) {}
+}
+
+function renderRtcSessionRow(item) {
+    const row = document.createElement("div");
+    row.className = "sr-row";
+
+    const left = document.createElement("div");
+    const t = document.createElement("div");
+    t.className = "sr-row-title";
+    const who = item.caller === "mirror" ? "Mirror" : "Carer";
+    t.textContent = `${who} call (${item.state || "ringing"})`;
+
+    const meta = document.createElement("div");
+    meta.className = "sr-row-meta";
+    const ts = item.createdAt ? new Date(item.createdAt).toLocaleString() : "";
+    const dev = item.device ? ` • ${item.device}` : "";
+    meta.textContent = `${ts}${dev}`;
+
+    left.appendChild(t);
+    left.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "sr-row-actions";
+
+    if (item.caller === "mirror" && !item.hasAnswer && !item.endedAt && !item.declinedAt) {
+        const ans = document.createElement("button");
+        ans.className = "button is-small is-primary is-light";
+        ans.textContent = "Answer";
+        ans.onclick = async () => answerRtc(item.id);
+        actions.appendChild(ans);
+    }
+
+    const hang = document.createElement("button");
+    hang.className = "button is-small is-danger is-light";
+    hang.textContent = "End";
+    hang.onclick = async () => hangupRtc("end_clicked", item.id);
+    actions.appendChild(hang);
+
+    row.appendChild(left);
+    row.appendChild(actions);
+    return row;
+}
+
+async function refreshRtc() {
+    if (!rtcListEl) return;
+    try {
+        setRtcError(null);
+        const res = await window.srFetch("/api/rtc/sessions", { method: "GET" });
+        if (!res || !res.ok || !res.json) return;
+
+        const items = Array.isArray(res.json.items) ? res.json.items : [];
+        const active = items.filter((x) => x && x.hasOffer && !x.endedAt && !x.declinedAt).slice(0, 10);
+
+        rtcListEl.innerHTML = "";
+        if (!active.length) {
+            const empty = document.createElement("p");
+            empty.className = "help";
+            empty.textContent = "No active calls.";
+            rtcListEl.appendChild(empty);
+            if (!rtcState.sessionId) setRtcStatus("Idle", false);
+            return;
+        }
+
+        active.forEach((it) => rtcListEl.appendChild(renderRtcSessionRow(it)));
+
+        if (!rtcState.sessionId) setRtcStatus("Incoming / Active", false);
+    } catch (e) {
+        setRtcError("Failed to load calls.");
+    }
+}
+
+async function createPeerConnectionCarer() {
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+
+    pc.ontrack = (evt) => {
+        if (!evt || !evt.streams || !evt.streams[0]) return;
+        if (rtcRemoteAudioEl) rtcRemoteAudioEl.srcObject = evt.streams[0];
+        safePlayAudio(rtcRemoteAudioEl);
+    };
+
+    pc.onicecandidate = async (evt) => {
+        if (!evt || !evt.candidate) return;
+
+        if (!rtcState.sessionId) {
+            rtcState.pendingLocalIce.push(evt.candidate);
+            while (rtcState.pendingLocalIce.length > 250) rtcState.pendingLocalIce.shift();
+            return;
+        }
+
+        await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(rtcState.sessionId)}/ice`, {
+            method: "POST",
+            body: JSON.stringify({ candidate: evt.candidate })
+        });
+    };
+
+    pc.onconnectionstatechange = () => {
+        const s = pc.connectionState;
+        if (s === "connected") setRtcStatus("In call", true);
+        if (s === "failed" || s === "disconnected") setRtcStatus(`Connection ${s}`, false);
+        if (s === "closed") setRtcStatus("Idle", false);
+    };
+
+    rtcState.pc = pc;
+    return pc;
+}
+
+async function callMirrorRtc() {
+    if (!rtcListEl) return;
+
+    try {
+        if (rtcState.sessionId) await hangupRtc("switch_session");
+
+        rtcState.iceSince = 0;
+        rtcState.pendingLocalIce = [];
+
+        setRtcError(null);
+        setRtcStatus("Calling…", false);
+
+        const pc = await createPeerConnectionCarer();
+
+        let stream = null;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            rtcState.localStream = stream;
+            stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+        } catch (e) {
+            // Listen-only fallback.
+            pc.addTransceiver("audio", { direction: "recvonly" });
+            setRtcError("Microphone blocked — answering in listen-only mode.");
+        }
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        const res = await window.srFetch("/api/rtc/call", {
+            method: "POST",
+            body: JSON.stringify({ mode: "audio", sdp: pc.localDescription })
+        });
+
+        if (!res || !res.ok || !res.json || !res.json.sessionId) {
+            setRtcError("Failed to start call (server).");
+            await hangupRtc("call_failed");
+            return;
+        }
+
+        rtcState.sessionId = String(res.json.sessionId);
+
+
+        const pending = Array.isArray(rtcState.pendingLocalIce) ? rtcState.pendingLocalIce : [];
+        rtcState.pendingLocalIce = [];
+        for (const c of pending) {
+            await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(rtcState.sessionId)}/ice`, {
+                method: "POST",
+                body: JSON.stringify({ candidate: c })
+            });
+        }
+
+        setRtcStatus("Ringing…", false);
+
+        rtcState.answerTimer = setInterval(async () => pollAnswer(rtcState.sessionId), 900);
+        rtcState.iceTimer = setInterval(async () => pollMirrorIce(rtcState.sessionId), 800);
+        await refreshRtc();
+    } catch (e) {
+        setRtcError(`Call failed: ${e && e.message ? e.message : String(e)}`);
+        await hangupRtc("call_exception");
+    }
+}
+
+async function pollAnswer(sessionId) {
+    if (!rtcState.sessionId || rtcState.sessionId !== sessionId) return;
+    if (!rtcState.pc) return;
+
+    const res = await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(sessionId)}/answer`, { method: "GET" });
+    if (!res || !res.ok || !res.json) return;
+
+    if (res.json.answer && rtcState.pc.signalingState !== "stable") {
+        await rtcState.pc.setRemoteDescription(res.json.answer);
+        setRtcStatus("In call", true);
+    }
+}
+
+async function pollMirrorIce(sessionId) {
+    if (!rtcState.sessionId || rtcState.sessionId !== sessionId) return;
+    if (!rtcState.pc) return;
+
+    const res = await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(sessionId)}/ice?since=${rtcState.iceSince}&from=mirror`, { method: "GET" });
+    if (!res || !res.ok || !res.json) return;
+
+    const items = Array.isArray(res.json.items) ? res.json.items : [];
+    for (const it of items) {
+        if (it && it.candidate) {
+            try { await rtcState.pc.addIceCandidate(it.candidate); } catch (_) {}
+        }
+    }
+    rtcState.iceSince = Number(res.json.next || rtcState.iceSince) || rtcState.iceSince;
+}
+
+async function answerRtc(sessionId) {
+    try {
+        if (rtcState.sessionId && rtcState.sessionId !== sessionId) await hangupRtc("switch_session");
+        rtcState.sessionId = sessionId;
+        rtcState.iceSince = 0;
+        rtcState.pendingLocalIce = [];
+
+        setRtcError(null);
+        setRtcStatus("Answering…", false);
+
+        const offerRes = await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(sessionId)}/offer`, { method: "GET" });
+        if (!offerRes || !offerRes.ok || !offerRes.json || !offerRes.json.offer) {
+            setRtcError("No offer found.");
+            return;
+        }
+
+        const pc = await createPeerConnectionCarer();
+
+        let stream = null;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            rtcState.localStream = stream;
+            stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+        } catch (e) {
+            pc.addTransceiver("audio", { direction: "recvonly" });
+            setRtcError("Microphone blocked — listen-only.");
+        }
+
+        await pc.setRemoteDescription(offerRes.json.offer);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        const postRes = await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(sessionId)}/answer`, {
+            method: "POST",
+            body: JSON.stringify({ sdp: pc.localDescription })
+        });
+
+        if (!postRes || !postRes.ok) {
+            setRtcError("Failed to send answer.");
+            await hangupRtc("answer_failed");
+            return;
+        }
+
+        const pending = Array.isArray(rtcState.pendingLocalIce) ? rtcState.pendingLocalIce : [];
+        rtcState.pendingLocalIce = [];
+        for (const c of pending) {
+            await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(sessionId)}/ice`, {
+                method: "POST",
+                body: JSON.stringify({ candidate: c })
+            });
+        }
+
+        setRtcStatus("In call", true);
+        rtcState.iceTimer = setInterval(async () => pollMirrorIce(sessionId), 800);
+        await refreshRtc();
+    } catch (e) {
+        setRtcError(`Answer failed: ${e && e.message ? e.message : String(e)}`);
+        await hangupRtc("answer_exception");
+    }
+}
+
+async function hangupRtc(reason, specificSessionId) {
+    try {
+        if (rtcState.answerTimer) clearInterval(rtcState.answerTimer);
+        if (rtcState.iceTimer) clearInterval(rtcState.iceTimer);
+        rtcState.answerTimer = null;
+        rtcState.iceTimer = null;
+
+        const sid = specificSessionId || rtcState.sessionId;
+        if (sid) {
+            await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(sid)}/end`, {
+                method: "POST",
+                body: JSON.stringify({ reason: reason || "hangup" })
+            });
+        }
+
+        if (rtcState.pc) {
+            try { rtcState.pc.close(); } catch (_) {}
+        }
+        rtcState.pc = null;
+
+        if (rtcState.localStream) {
+            rtcState.localStream.getTracks().forEach((t) => { try { t.stop(); } catch (_) {} });
+        }
+        rtcState.localStream = null;
+        rtcState.sessionId = null;
+        rtcState.iceSince = 0;
+        rtcState.pendingLocalIce = [];
+
+        setRtcStatus("Idle", false);
+        await refreshRtc();
+    } catch (_) {
+        setRtcStatus("Idle", false);
+    }
+}
+
+const rtcCallBtn = document.getElementById("rtcCall");
+if (rtcCallBtn) rtcCallBtn.onclick = async () => callMirrorRtc();
+
+const rtcRefreshBtn = document.getElementById("rtcRefresh");
+if (rtcRefreshBtn) rtcRefreshBtn.onclick = async () => refreshRtc();
+
+const rtcHangupBtn = document.getElementById("rtcHangup");
+if (rtcHangupBtn) rtcHangupBtn.onclick = async () => hangupRtc("carer_hangup");
+
+if (rtcListEl) {
+    refreshRtc();
+    setInterval(refreshRtc, 2500);
+}

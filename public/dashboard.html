@@ -62,6 +62,13 @@
         .sr-hue-controls input[type="range"] {
             width: 110px;
         }
+    
+        .sr-row { display:flex; align-items:center; justify-content:space-between; padding: .5rem 0; border-bottom: 1px solid #eee; gap: .75rem; }
+        .sr-row:last-child { border-bottom: 0; }
+        .sr-row-title { font-weight: 600; }
+        .sr-row-meta { font-size: .85rem; opacity: .75; }
+        .sr-row-actions { display:flex; gap: .5rem; flex-wrap: wrap; justify-content:flex-end; }
+
     </style>
 </head>
 <body class="sr-bg">
@@ -122,52 +129,44 @@
 
                     <div id="queue"></div>
                 </div>
-            </div>
-        </div>
-
-        
-        <div class="box sr-box mt-5">
-            <div class="level">
-                <div class="level-left">
-                    <h2 class="title is-5 level-item">Incoming alerts (from mirror)</h2>
-                    <span id="careCount" class="tag is-light level-item">0</span>
-                </div>
-                <div class="level-right">
-                    <div class="buttons">
-                        <button id="careRefresh" class="button is-small is-light">Refresh</button>
-                        <button id="careClear" class="button is-small is-danger is-light">Clear</button>
+                        <div class="column is-7">
+                <div class="box sr-box">
+                    <div class="level">
+                        <div class="level-left">
+                            <h2 class="title is-5 level-item">Care alerts (from mirror)</h2>
+                        </div>
+                        <div class="level-right">
+                            <button id="careRefresh" class="button is-light level-item">Refresh</button>
+                            <button id="careClear" class="button is-danger is-light level-item">Clear all</button>
+                        </div>
                     </div>
+                    <p id="careErr" class="help is-danger" style="display:none"></p>
+                    <div id="careList"></div>
+                </div>
+
+                <div class="box sr-box mt-5">
+                    <div class="level">
+                        <div class="level-left">
+                            <h2 class="title is-5 level-item">Audio call</h2>
+                            <span id="rtcStatus" class="tag level-item is-light">Idle</span>
+                        </div>
+                        <div class="level-right">
+                            <button id="rtcCall" class="button is-primary is-light level-item">Call mirror</button>
+                            <button id="rtcRefresh" class="button is-light level-item">Refresh</button>
+                            <button id="rtcHangup" class="button is-danger is-light level-item">Hang up</button>
+                        </div>
+                    </div>
+
+                    <p id="rtcErr" class="help is-danger" style="display:none"></p>
+                    <audio id="rtcRemoteAudio" autoplay playsinline></audio>
+                    <div id="rtcList" class="mt-2"></div>
                 </div>
             </div>
 
-            <p class="mb-3 sr-muted">These are alerts sent from the mirror user. Acknowledge to mark as handled.</p>
-
-            <div id="careQueue"></div>
+</div>
         </div>
 
         <div class="box sr-box mt-5">
-            <div class="level">
-                <div class="level-left">
-                    <h2 class="title is-5 level-item">Audio calls</h2>
-                    <span id="rtcStatus" class="tag is-light level-item">Idle</span>
-                </div>
-                <div class="level-right">
-                    <div class="buttons">
-                        <button id="rtcCall" class="button is-small is-link">Call mirror</button>
-                        <button id="rtcRefresh" class="button is-small">Refresh</button>
-                        <button id="rtcHangup" class="button is-small is-danger">Hang up</button>
-                    </div>
-                </div>
-            </div>
-
-            <p id="rtcErr" class="help is-danger" style="display:none;"></p>
-
-            <div id="rtcList"></div>
-
-            <audio id="rtcRemoteAudio" autoplay playsinline></audio>
-        </div>
-
-<div class="box sr-box mt-5">
             <div class="level">
                 <div class="level-left">
                     <h2 class="title is-5 level-item">Hue</h2>
