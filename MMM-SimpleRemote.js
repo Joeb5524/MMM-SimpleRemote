@@ -4,6 +4,7 @@ Module.register("MMM-SimpleRemote", {
     defaults: {
         basePath: "/mm-simple-remote",
         maxQueue: 25,
+        mirrorToken: "",
         showTimestamp: true,
         dismissOnTouch: true,
 
@@ -29,7 +30,8 @@ Module.register("MMM-SimpleRemote", {
         this.sendSocketNotification("SR_INIT", {
             basePath: this.config.basePath,
             maxQueue: this.config.maxQueue,
-            hue: this.config.hue
+            hue: this.config.hue,
+            mirrorToken: this.config.mirrorToken
         });
     },
 
@@ -131,6 +133,16 @@ Module.register("MMM-SimpleRemote", {
                 item: payload.item,
                 requestId: payload.requestId || null
             });
+        }
+
+        if (notification === "SR_RTC_SESSION_CREATED") {
+            this.sendNotification("SR_RTC_SESSION_CREATED", payload || {});
+            return;
+        }
+
+        if (notification === "SR_RTC_CARER") {
+            this.sendNotification("SR_RTC_CARER", payload || {});
+            return;
         }
     },
 
