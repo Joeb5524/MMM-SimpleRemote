@@ -377,10 +377,14 @@ function renderCareRow(item) {
     const meta = document.createElement("div");
     meta.className = "sr-row-meta";
     const ts = item.createdAt ? new Date(item.createdAt).toLocaleString() : "";
+    const careMetaParts = [ts];
+    if (item.device) careMetaParts.push(item.device);
+    if (item.acknowledgedAt) careMetaParts.push("ack");
     const dev = item.device ? ` • ${item.device}` : "";
     const ack = item.acknowledgedAt ? " • ack" : "";
     meta.textContent = `${ts}${dev}${ack}`;
 
+    meta.textContent = careMetaParts.filter(Boolean).join(" | ");
     left.appendChild(title);
     left.appendChild(meta);
 
@@ -497,6 +501,8 @@ function renderRtcSessionRow(item) {
     t.className = "sr-row-title";
     const who = item.caller === "mirror" ? "Mirror" : "Carer";
     t.textContent = `${who} call (${item.state || "ringing"})`;
+    const rtcMetaParts = [item.createdAt ? new Date(item.createdAt).toLocaleString() : ""];
+    if (item.device) rtcMetaParts.push(item.device);
 
     const meta = document.createElement("div");
     meta.className = "sr-row-meta";
@@ -504,6 +510,7 @@ function renderRtcSessionRow(item) {
     const dev = item.device ? ` • ${item.device}` : "";
     meta.textContent = `${ts}${dev}`;
 
+    meta.textContent = rtcMetaParts.filter(Boolean).join(" | ");
     left.appendChild(t);
     left.appendChild(meta);
 
@@ -533,6 +540,7 @@ async function refreshRtc() {
     if (!rtcListEl) return;
     try {
         setRtcError(null);
+        setRtcStatus("Calling...", false);
         const res = await window.srFetch("/api/rtc/sessions", { method: "GET" });
         if (!res || !res.ok || !res.json) return;
 
@@ -602,8 +610,10 @@ async function callMirrorRtc() {
         rtcState.pendingLocalIce = [];
 
         setRtcError(null);
+        setRtcStatus("Calling...", false);
         setRtcStatus("Calling…", false);
 
+        setRtcStatus("Calling...", false);
         const pc = await createPeerConnectionCarer();
 
         let stream = null;
@@ -614,9 +624,11 @@ async function callMirrorRtc() {
         } catch (e) {
             // Listen-only fallback.
             pc.addTransceiver("audio", { direction: "recvonly" });
+            setRtcError("Microphone blocked - answering in listen-only mode.");
             setRtcError("Microphone blocked — answering in listen-only mode.");
         }
 
+        if (!rtcState.localStream) setRtcError("Microphone blocked - answering in listen-only mode.");
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
@@ -645,6 +657,7 @@ async function callMirrorRtc() {
 
         setRtcStatus("Ringing…", false);
 
+        setRtcStatus("Ringing...", false);
         rtcState.answerTimer = setInterval(async () => pollAnswer(rtcState.sessionId), 900);
         rtcState.iceTimer = setInterval(async () => pollMirrorIce(rtcState.sessionId), 800);
         await refreshRtc();
@@ -691,8 +704,10 @@ async function answerRtc(sessionId) {
         rtcState.pendingLocalIce = [];
 
         setRtcError(null);
+        setRtcStatus("Answering...", false);
         setRtcStatus("Answering…", false);
 
+        setRtcStatus("Answering...", false);
         const offerRes = await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(sessionId)}/offer`, { method: "GET" });
         if (!offerRes || !offerRes.ok || !offerRes.json || !offerRes.json.offer) {
             setRtcError("No offer found.");
@@ -708,9 +723,11 @@ async function answerRtc(sessionId) {
             stream.getTracks().forEach((t) => pc.addTrack(t, stream));
         } catch (e) {
             pc.addTransceiver("audio", { direction: "recvonly" });
+            setRtcError("Microphone blocked - listen-only.");
             setRtcError("Microphone blocked — listen-only.");
         }
 
+        if (!rtcState.localStream) setRtcError("Microphone blocked - listen-only.");
         await pc.setRemoteDescription(offerRes.json.offer);
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);

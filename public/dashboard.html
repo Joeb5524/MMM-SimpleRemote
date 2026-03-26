@@ -62,13 +62,11 @@
         .sr-hue-controls input[type="range"] {
             width: 110px;
         }
-    
         .sr-row { display:flex; align-items:center; justify-content:space-between; padding: .5rem 0; border-bottom: 1px solid #eee; gap: .75rem; }
         .sr-row:last-child { border-bottom: 0; }
         .sr-row-title { font-weight: 600; }
         .sr-row-meta { font-size: .85rem; opacity: .75; }
         .sr-row-actions { display:flex; gap: .5rem; flex-wrap: wrap; justify-content:flex-end; }
-
     </style>
 </head>
 <body class="sr-bg">
@@ -90,7 +88,7 @@
             </div>
         </nav>
 
-        <div class="columns">
+        <div class="columns is-multiline">
             <div class="column is-5">
                 <div class="box sr-box">
                     <h2 class="title is-5">Send alert</h2>
@@ -116,7 +114,7 @@
                 </div>
             </div>
 
-            <div class="column">
+            <div class="column is-7">
                 <div class="box sr-box">
                     <div class="level">
                         <div class="level-left">
@@ -129,8 +127,8 @@
 
                     <div id="queue"></div>
                 </div>
-                        <div class="column is-7">
-                <div class="box sr-box">
+
+                <div class="box sr-box mt-5">
                     <div class="level">
                         <div class="level-left">
                             <h2 class="title is-5 level-item">Care alerts (from mirror)</h2>
@@ -162,27 +160,25 @@
                     <div id="rtcList" class="mt-2"></div>
                 </div>
             </div>
-
-</div>
         </div>
 
         <div class="box sr-box mt-5">
             <div class="level">
                 <div class="level-left">
                     <h2 class="title is-5 level-item">Hue</h2>
-                    <span id="hueStatus" class="tag is-light level-item">Loading…</span>
+                    <span id="hueStatus" class="tag is-light level-item">Loading...</span>
                 </div>
                 <div class="level-right">
                     <div class="buttons">
                         <button id="hueTypeLights" class="button is-small is-light">Lights</button>
                         <button id="hueTypeGroups" class="button is-small is-light">Rooms</button>
-                        <button id="hueMic" class="button is-small is-light">🎤</button>
+                        <button id="hueMic" class="button is-small is-light">Mic</button>
                     </div>
                 </div>
             </div>
 
             <p class="mb-3">
-                Tap a card to toggle. Voice examples: “lights on”, “lights off”, “set lights red”.
+                Tap a card to toggle. Voice examples: "lights on", "lights off", "set lights red".
             </p>
 
             <div id="hueErr" class="notification is-danger is-light" style="display:none;"></div>

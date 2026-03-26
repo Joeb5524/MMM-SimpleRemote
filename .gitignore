@@ -1,0 +1,6 @@
+node_modules/
+.idea/
+
+data/auth.json
+data/care_alerts.json
+data/acks.json
