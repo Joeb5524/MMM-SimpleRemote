@@ -145,6 +145,28 @@
             <div id="careQueue"></div>
         </div>
 
+        <div class="box sr-box mt-5">
+            <div class="level">
+                <div class="level-left">
+                    <h2 class="title is-5 level-item">Audio calls</h2>
+                    <span id="rtcStatus" class="tag is-light level-item">Idle</span>
+                </div>
+                <div class="level-right">
+                    <div class="buttons">
+                        <button id="rtcCall" class="button is-small is-link">Call mirror</button>
+                        <button id="rtcRefresh" class="button is-small">Refresh</button>
+                        <button id="rtcHangup" class="button is-small is-danger">Hang up</button>
+                    </div>
+                </div>
+            </div>
+
+            <p id="rtcErr" class="help is-danger" style="display:none;"></p>
+
+            <div id="rtcList"></div>
+
+            <audio id="rtcRemoteAudio" autoplay playsinline></audio>
+        </div>
+
 <div class="box sr-box mt-5">
             <div class="level">
                 <div class="level-left">

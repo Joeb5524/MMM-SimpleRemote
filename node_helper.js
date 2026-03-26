@@ -14,6 +14,7 @@ module.exports = NodeHelper.create({
     start() {
         this.basePath = "/mm-simple-remote";
         this.maxQueue = 25;
+        this.mirrorToken = process.env.SR_MIRROR_TOKEN ? String(process.env.SR_MIRROR_TOKEN) : "";
 
         this.dataDir = path.join(__dirname, "data");
         this.alertsFile = path.join(this.dataDir, "alerts.json");
@@ -25,14 +26,18 @@ module.exports = NodeHelper.create({
         this.authStore = this._loadOrCreateAuthStore();
         this.queue = this._loadAlerts();
         this.careQueue = this._loadCareAlerts();
+        this.rtcSessions = new Map();
+        this.rtcTtlMs = 10 * 60 * 1000; // 10 minutes
+        this._rtcCleanupTimer = setInterval(() => this._cleanupRtcSessions(), 30 * 1000);
+        if (this._rtcCleanupTimer && this._rtcCleanupTimer.unref) this._rtcCleanupTimer.unref();
+
         this.active = null;
         this.activeUntil = 0;
 
         this.hue = new HueBridge(this._loadHueEnv());
 
-        this._setupExpress();
-
-        this.hue.start();
+        this._expressReady = false;
+        this._hueStarted = false;
     },
 
     socketNotificationReceived(notification, payload) {
@@ -42,9 +47,26 @@ module.exports = NodeHelper.create({
             }
             if (payload && Number.isFinite(payload.maxQueue)) this.maxQueue = payload.maxQueue;
 
+            if (payload && typeof payload.mirrorToken === "string") {
+                this.mirrorToken = String(payload.mirrorToken || "");
+            }
+
             if (payload && payload.hue && typeof payload.hue === "object") {
                 this.hue.configure(payload.hue);
             }
+
+            if (!this._expressReady) {
+                this._setupExpress();
+                this._expressReady = true;
+            }
+
+            if (!this._hueStarted) {
+                this.hue.start();
+                this._hueStarted = true;
+            }
+
+            this._broadcastSync();
+            this._tickQueue();
             return;
         }
 
@@ -86,7 +108,110 @@ module.exports = NodeHelper.create({
             this.sendSocketNotification("SR_CARE_ALERT_CREATED", { item, requestId: payload.requestId || null });
         }
 
+        if (notification === "SR_RTC_MIRROR" && payload && payload.type) {
+            this._handleRtcMirrorSignal(payload);
+        }
+
     },
+
+
+    _handleRtcMirrorSignal(payload) {
+        const type = payload && payload.type ? String(payload.type) : "";
+        if (!type) return;
+
+        if (type === "CREATE") {
+            const id = `rtc-${this._id()}`;
+            const now = Date.now();
+
+            const session = {
+                id,
+                mode: payload && payload.mode ? String(payload.mode) : "audio",
+                caller: "mirror",
+                state: "ringing",
+                acceptedAt: null,
+                declinedAt: null,
+                createdAt: now,
+                lastActivityAt: now,
+                offer: null,
+                answer: null,
+                iceFromMirror: [],
+                iceFromCarer: [],
+                endedAt: null
+            };
+
+            this.rtcSessions.set(id, session);
+            this.sendSocketNotification("SR_RTC_SESSION_CREATED", {
+                sessionId: id,
+                requestId: payload && payload.requestId ? String(payload.requestId) : null
+            });
+            return;
+        }
+
+        const sessionId = payload && payload.sessionId ? String(payload.sessionId) : "";
+        if (!sessionId) return;
+
+        const s = this.rtcSessions.get(sessionId);
+        if (!s || s.endedAt) return;
+
+        if (type === "OFFER" && payload.sdp && payload.sdp.type && payload.sdp.sdp) {
+            s.offer = payload.sdp;
+            s.lastActivityAt = Date.now();
+            return;
+        }
+
+        if (type === "ICE" && payload.candidate && payload.candidate.candidate) {
+            s.iceFromMirror.push(payload.candidate);
+            s.lastActivityAt = Date.now();
+            while (s.iceFromMirror.length > 500) s.iceFromMirror.shift();
+            return;
+        }
+
+
+        if (type === "ANSWER" && payload.sdp && payload.sdp.type && payload.sdp.sdp) {
+            s.answer = payload.sdp;
+            s.acceptedAt = s.acceptedAt || Date.now();
+            s.state = "active";
+            s.lastActivityAt = Date.now();
+            return;
+        }
+
+        if (type === "ACCEPT") {
+            s.acceptedAt = s.acceptedAt || Date.now();
+            s.state = s.state === "ringing" ? "accepted" : (s.state || "accepted");
+            s.lastActivityAt = Date.now();
+            return;
+        }
+
+        if (type === "DECLINE") {
+            s.declinedAt = s.declinedAt || Date.now();
+            if (!s.endedAt) s.endedAt = Date.now();
+            s.state = "declined";
+            s.lastActivityAt = Date.now();
+            return;
+        }
+
+        if (type === "END") {
+            if (!s.endedAt) s.endedAt = Date.now();
+            s.state = "ended";
+            s.lastActivityAt = Date.now();
+        }
+    },
+
+    _emitRtcToMirror(payload) {
+        this.sendSocketNotification("SR_RTC_CARER", payload || {});
+    },
+
+    _cleanupRtcSessions() {
+        const now = Date.now();
+        const ttl = Math.max(60 * 1000, Number(this.rtcTtlMs) || (10 * 60 * 1000));
+
+        for (const [id, s] of this.rtcSessions.entries()) {
+            const last = s && s.lastActivityAt ? Number(s.lastActivityAt) : 0;
+            const age = now - (last || now);
+            if (age > ttl) this.rtcSessions.delete(id);
+        }
+    },
+
 
     _loadHueEnv() {
         const toBool = (v, fallback) => {
@@ -305,6 +430,134 @@ module.exports = NodeHelper.create({
             res.json({ ok: true });
         });
 
+
+        app.post(`${this.basePath}/api/rtc/call`, this._requireAuth.bind(this), this._jsonBody(), (req, res) => {
+            const mode = req.body && req.body.mode ? String(req.body.mode) : "audio";
+            const sdp = req.body && req.body.sdp ? req.body.sdp : null;
+            if (!sdp || !sdp.type || !sdp.sdp) return res.status(400).json({ ok: false, error: "bad_sdp" });
+
+            const id = `rtc-${this._id()}`;
+            const now = Date.now();
+
+            const session = {
+                id,
+                mode,
+                caller: "carer",
+                state: "ringing",
+                acceptedAt: null,
+                declinedAt: null,
+                createdAt: now,
+                lastActivityAt: now,
+                offer: sdp,
+                answer: null,
+                iceFromMirror: [],
+                iceFromCarer: [],
+                endedAt: null
+            };
+
+            this.rtcSessions.set(id, session);
+
+
+            this._emitRtcToMirror({ type: "INCOMING", sessionId: id, mode, sdp });
+
+            res.json({ ok: true, sessionId: id });
+        });
+
+        app.get(`${this.basePath}/api/rtc/sessions`, this._requireAuth.bind(this), (req, res) => {
+            const now = Date.now();
+            const items = Array.from(this.rtcSessions.values()).map((s) => ({
+                id: s.id,
+                mode: s.mode,
+                caller: s.caller || "mirror",
+                state: s.state || null,
+                acceptedAt: s.acceptedAt || null,
+                declinedAt: s.declinedAt || null,
+                createdAt: s.createdAt,
+                lastActivityAt: s.lastActivityAt,
+                hasOffer: !!s.offer,
+                hasAnswer: !!s.answer,
+                endedAt: s.endedAt || null,
+                ageMs: now - (s.createdAt || now)
+            })).sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
+            res.json({ ok: true, items });
+        });
+
+        app.get(`${this.basePath}/api/rtc/sessions/:id/offer`, this._requireAuth.bind(this), (req, res) => {
+            const id = String(req.params.id || "");
+            const s = this.rtcSessions.get(id);
+            if (!s || !s.offer || s.endedAt) return res.status(404).json({ ok: false, error: "not_found" });
+            res.json({ ok: true, sdp: s.offer });
+        });
+
+        app.post(`${this.basePath}/api/rtc/sessions/:id/answer`, this._requireAuth.bind(this), this._jsonBody(), (req, res) => {
+            const id = String(req.params.id || "");
+            const s = this.rtcSessions.get(id);
+            if (!s || !s.offer || s.endedAt) return res.status(404).json({ ok: false, error: "not_found" });
+
+            const sdp = req.body && req.body.sdp ? req.body.sdp : null;
+            if (!sdp || !sdp.type || !sdp.sdp) return res.status(400).json({ ok: false, error: "bad_sdp" });
+
+            s.answer = sdp;
+            s.lastActivityAt = Date.now();
+
+            this._emitRtcToMirror({ type: "ANSWER", sessionId: id, sdp });
+            res.json({ ok: true });
+        });
+
+
+        app.get(`${this.basePath}/api/rtc/sessions/:id/answer`, this._requireAuth.bind(this), (req, res) => {
+            const id = String(req.params.id || "");
+            const s = this.rtcSessions.get(id);
+            if (!s || s.endedAt) return res.status(404).json({ ok: false, error: "not_found" });
+
+            return res.json({
+                ok: true,
+                sdp: s.answer || null,
+                state: s.state || null,
+                acceptedAt: s.acceptedAt || null,
+                declinedAt: s.declinedAt || null,
+                endedAt: s.endedAt || null
+            });
+        });
+
+        app.get(`${this.basePath}/api/rtc/sessions/:id/ice`, this._requireAuth.bind(this), (req, res) => {
+            const id = String(req.params.id || "");
+            const s = this.rtcSessions.get(id);
+            if (!s || s.endedAt) return res.status(404).json({ ok: false, error: "not_found" });
+
+            const since = Number(req.query && req.query.since ? req.query.since : 0) || 0;
+            const list = Array.isArray(s.iceFromMirror) ? s.iceFromMirror : [];
+            const items = list.slice(Math.max(0, since)).map((c, idx) => ({ index: since + idx, candidate: c }));
+            res.json({ ok: true, items, nextSince: since + items.length });
+        });
+
+        app.post(`${this.basePath}/api/rtc/sessions/:id/ice`, this._requireAuth.bind(this), this._jsonBody(), (req, res) => {
+            const id = String(req.params.id || "");
+            const s = this.rtcSessions.get(id);
+            if (!s || s.endedAt) return res.status(404).json({ ok: false, error: "not_found" });
+
+            const candidate = req.body && req.body.candidate ? req.body.candidate : null;
+            if (!candidate || !candidate.candidate) return res.status(400).json({ ok: false, error: "bad_candidate" });
+
+            s.iceFromCarer.push(candidate);
+            s.lastActivityAt = Date.now();
+
+            this._emitRtcToMirror({ type: "ICE", sessionId: id, candidate });
+            res.json({ ok: true });
+        });
+
+        app.post(`${this.basePath}/api/rtc/sessions/:id/end`, this._requireAuth.bind(this), this._jsonBody(), (req, res) => {
+            const id = String(req.params.id || "");
+            const s = this.rtcSessions.get(id);
+            if (!s) return res.status(404).json({ ok: false, error: "not_found" });
+
+            if (!s.endedAt) s.endedAt = Date.now();
+            s.lastActivityAt = Date.now();
+
+            this._emitRtcToMirror({ type: "END", sessionId: id, reason: req.body && req.body.reason ? String(req.body.reason) : "ended" });
+            res.json({ ok: true });
+        });
+
         app.get(`${this.basePath}/api/config/modules`, this._requireAuth.bind(this), (req, res) => {
             try {
                 const cfg = this._loadConfigObject(true);
@@ -408,6 +661,163 @@ module.exports = NodeHelper.create({
             res.json({ ok: true });
         });
 
+
+        app.post(`${this.basePath}/api/mirror/care-alert`, this._requireMirrorToken.bind(this), this._jsonBody(), (req, res) => {
+            const title = this._cleanText(req.body && req.body.title, 80) || "Mirror alert";
+            const message = this._cleanText(req.body && req.body.message, 2000) || "Assistance requested from the mirror.";
+            const level = this._cleanText(req.body && req.body.level, 30) || "help";
+
+            const item = {
+                id: this._id(),
+                title,
+                message,
+                level,
+                createdAt: Date.now(),
+                acknowledgedAt: null
+            };
+
+            this.careQueue.push(item);
+
+            const maxCare = Math.max(50, Number(this.maxQueue) || 25);
+            while (this.careQueue.length > maxCare) this.careQueue.shift();
+
+            this._saveCareAlerts();
+            return res.json({ ok: true, item });
+        });
+
+        app.post(`${this.basePath}/api/mirror/rtc/create`, this._requireMirrorToken.bind(this), this._jsonBody(), (req, res) => {
+            const mode = req.body && req.body.mode ? String(req.body.mode) : "audio";
+            const offer = req.body && req.body.offer ? req.body.offer : null;
+            if (!offer || !offer.type || !offer.sdp) return res.status(400).json({ ok: false, error: "bad_sdp" });
+
+            const id = `rtc-${this._id()}`;
+            const now = Date.now();
+
+            const session = {
+                id,
+                mode,
+                caller: "mirror",
+                state: "ringing",
+                acceptedAt: null,
+                declinedAt: null,
+                createdAt: now,
+                lastActivityAt: now,
+                offer,
+                answer: null,
+                iceFromMirror: [],
+                iceFromCarer: [],
+                endedAt: null,
+                seenByMirrorAt: now
+            };
+
+            this.rtcSessions.set(id, session);
+            return res.json({ ok: true, sessionId: id });
+        });
+
+        app.get(`${this.basePath}/api/mirror/rtc/pending`, this._requireMirrorToken.bind(this), (req, res) => {
+            const now = Date.now();
+            const sessions = Array.from(this.rtcSessions.values())
+                .filter((s) => s && s.caller === "carer" && s.state === "ringing" && !s.endedAt && !!s.offer)
+                .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+            const next = sessions.find((s) => !s.seenByMirrorAt);
+            if (next) next.seenByMirrorAt = now;
+
+            if (!next) return res.json({ ok: true, item: null });
+
+            return res.json({
+                ok: true,
+                item: {
+                    id: next.id,
+                    mode: next.mode,
+                    offer: next.offer,
+                    createdAt: next.createdAt
+                }
+            });
+        });
+
+        app.get(`${this.basePath}/api/mirror/rtc/:id/answer`, this._requireMirrorToken.bind(this), (req, res) => {
+            const id = String(req.params.id || "");
+            const s = this.rtcSessions.get(id);
+            if (!s || s.endedAt) return res.status(404).json({ ok: false, error: "not_found" });
+
+            return res.json({
+                ok: true,
+                sdp: s.answer || null,
+                state: s.state || null,
+                acceptedAt: s.acceptedAt || null,
+                declinedAt: s.declinedAt || null,
+                endedAt: s.endedAt || null
+            });
+        });
+
+        app.post(`${this.basePath}/api/mirror/rtc/:id/answer`, this._requireMirrorToken.bind(this), this._jsonBody(), (req, res) => {
+            const id = String(req.params.id || "");
+            const s = this.rtcSessions.get(id);
+            if (!s || !s.offer || s.endedAt) return res.status(404).json({ ok: false, error: "not_found" });
+
+            const sdp = req.body && req.body.sdp ? req.body.sdp : null;
+            if (!sdp || !sdp.type || !sdp.sdp) return res.status(400).json({ ok: false, error: "bad_sdp" });
+
+            s.answer = sdp;
+            s.state = "accepted";
+            s.acceptedAt = Date.now();
+            s.lastActivityAt = Date.now();
+
+            return res.json({ ok: true });
+        });
+
+        app.post(`${this.basePath}/api/mirror/rtc/:id/decline`, this._requireMirrorToken.bind(this), this._jsonBody(), (req, res) => {
+            const id = String(req.params.id || "");
+            const s = this.rtcSessions.get(id);
+            if (!s || s.endedAt) return res.status(404).json({ ok: false, error: "not_found" });
+
+            s.declinedAt = Date.now();
+            s.state = "declined";
+            s.lastActivityAt = Date.now();
+
+            return res.json({ ok: true });
+        });
+
+        app.get(`${this.basePath}/api/mirror/rtc/:id/ice`, this._requireMirrorToken.bind(this), (req, res) => {
+            const id = String(req.params.id || "");
+            const s = this.rtcSessions.get(id);
+            if (!s || s.endedAt) return res.status(404).json({ ok: false, error: "not_found" });
+
+            const since = Number.isFinite(Number(req.query && req.query.since)) ? Number(req.query.since) : 0;
+            const start = Math.max(0, Math.floor(since));
+            const items = Array.isArray(s.iceFromCarer) ? s.iceFromCarer.slice(start) : [];
+
+            return res.json({ ok: true, items, next: (Array.isArray(s.iceFromCarer) ? s.iceFromCarer.length : 0) });
+        });
+
+        app.post(`${this.basePath}/api/mirror/rtc/:id/ice`, this._requireMirrorToken.bind(this), this._jsonBody(), (req, res) => {
+            const id = String(req.params.id || "");
+            const s = this.rtcSessions.get(id);
+            if (!s || s.endedAt) return res.status(404).json({ ok: false, error: "not_found" });
+
+            const candidate = req.body && req.body.candidate ? req.body.candidate : null;
+            if (!candidate || !candidate.candidate) return res.status(400).json({ ok: false, error: "bad_candidate" });
+
+            if (!Array.isArray(s.iceFromMirror)) s.iceFromMirror = [];
+            s.iceFromMirror.push(candidate);
+            s.lastActivityAt = Date.now();
+
+            return res.json({ ok: true });
+        });
+
+        app.post(`${this.basePath}/api/mirror/rtc/:id/end`, this._requireMirrorToken.bind(this), this._jsonBody(), (req, res) => {
+            const id = String(req.params.id || "");
+            const s = this.rtcSessions.get(id);
+            if (!s) return res.status(404).json({ ok: false, error: "not_found" });
+
+            s.endedAt = Date.now();
+            s.state = "ended";
+            s.lastActivityAt = Date.now();
+
+            return res.json({ ok: true });
+        });
+
         app.get(`${this.basePath}/api/hue/status`, this._requireAuth.bind(this), async (req, res) => {
             try {
                 res.json({ ok: true, ...this.hue.status() });
@@ -457,6 +867,15 @@ module.exports = NodeHelper.create({
         if (this._needsBootstrap()) return res.status(409).json({ ok: false, needsSetup: true, error: "Initial setup required" });
         if (!this._isAuthed(req)) return res.status(401).json({ ok: false });
         next();
+    },
+
+    _requireMirrorToken(req, res, next) {
+        if (!this.mirrorToken) return next();
+
+        const token = (req.get("x-mirror-token") || req.get("X-Mirror-Token") || (req.query && req.query.token) || (req.body && req.body.token) || "").toString();
+        if (token && token === this.mirrorToken) return next();
+
+        return res.status(401).json({ ok: false, error: "unauthorized" });
     },
 
     _isAuthed(req) {

@@ -1,7 +1,7 @@
 {
   "name": "mmm-simpleremote",
   "version": "1.0.0",
-  "description": "Simple remote dashboard for MagicMirror (alerts + config patching)",
+  "description": "Simple remote dashboard for MagicMirror (alerts + care alerts + WebRTC signalling hub)",
   "main": "node_helper.js",
   "author": "Joe Ball",
   "license": "MIT",
@@ -10,6 +10,7 @@
     "bcryptjs": "^2.4.3",
     "express-session": "^1.18.1",
     "fast-json-patch": "^3.1.1",
-    "helmet": "^7.1.0"
+    "helmet": "^7.1.0",
+    "express": "^4.19.2"
   }
 }
