@@ -8,32 +8,56 @@
     <link rel="stylesheet" href="./app.css">
 </head>
 <body class="sr-bg">
-<section class="section">
-    <div class="container" style="max-width:420px;">
-        <div class="box sr-box">
-            <h1 class="title is-4">Mirror Remote</h1>
-            <p class="mb-4">Sign in to manage alerts and config.</p>
+<main class="sr-auth-page">
+    <section class="sr-auth-shell">
+        <div class="sr-auth-copy">
+            <span class="sr-eyebrow">Secure Remote Access</span>
+            <div>
+                <h1 class="sr-auth-title">Mirror Remote</h1>
+                <p class="sr-auth-text">Manage alerts, care workflows, calls and device controls from a cleaner black and pink interface.</p>
+            </div>
+
+            <div class="sr-auth-points">
+                <div class="sr-auth-point">
+                    <strong>Alert delivery</strong>
+                    Queue and clear messages without touching the mirror itself.
+                </div>
+                <div class="sr-auth-point">
+                    <strong>Care visibility</strong>
+                    Check incoming alerts and active calls in the same control space.
+                </div>
+            </div>
+        </div>
+
+        <section class="sr-box">
+            <div class="sr-panel-head">
+                <div>
+                    <span class="sr-eyebrow">Sign in</span>
+                    <h2 class="sr-panel-title">Access dashboard</h2>
+                    <p class="sr-panel-copy">Use your configured account to continue.</p>
+                </div>
+            </div>
 
             <div class="field">
-                <label class="label">Username</label>
+                <label class="label" for="username">Username</label>
                 <div class="control">
                     <input id="username" class="input" type="text" autocomplete="username">
                 </div>
             </div>
 
             <div class="field">
-                <label class="label">Password</label>
+                <label class="label" for="password">Password</label>
                 <div class="control">
                     <input id="password" class="input" type="password" autocomplete="current-password">
                 </div>
             </div>
 
-            <p id="err" class="has-text-danger mb-3" style="display:none;">Login failed.</p>
+            <p id="err" class="sr-status sr-status--danger sr-hidden">Login failed.</p>
 
-            <button id="btn" class="button is-link is-fullwidth">Sign in</button>
-        </div>
-    </div>
-</section>
+            <button id="btn" class="button is-link is-fullwidth" type="button">Sign in</button>
+        </section>
+    </section>
+</main>
 
 <script src="./app.js"></script>
 <script src="./login.js"></script>

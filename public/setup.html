@@ -8,18 +8,38 @@
     <link rel="stylesheet" href="./app.css">
 </head>
 <body class="sr-bg">
-<section class="section">
-    <div class="container" style="max-width:520px;">
-        <div class="box sr-box">
-            <h1 class="title is-4">First-time setup</h1>
-            <p class="mb-4">Create the first dashboard account for this mirror. A session secret has already been generated automatically for this installation.</p>
+<main class="sr-auth-page">
+    <section class="sr-auth-shell">
+        <div class="sr-auth-copy">
+            <span class="sr-eyebrow">First-time Setup</span>
+            <div>
+                <h1 class="sr-auth-title">Create the first account</h1>
+                <p class="sr-auth-text">Finish bootstrap for this mirror by creating the first dashboard user. The session secret has already been generated for this installation.</p>
+            </div>
 
-            <div class="notification is-info is-light">
-                This page is only shown until the first user has been created.
+            <div class="sr-note-grid">
+                <div class="sr-note">
+                    <strong>Shown once</strong>
+                    This screen disappears as soon as the first user exists.
+                </div>
+                <div class="sr-note">
+                    <strong>Recommended</strong>
+                    Use a strong password now so the remote stays locked down from the start.
+                </div>
+            </div>
+        </div>
+
+        <section class="sr-box">
+            <div class="sr-panel-head">
+                <div>
+                    <span class="sr-eyebrow">Bootstrap</span>
+                    <h2 class="sr-panel-title">New dashboard user</h2>
+                    <p class="sr-panel-copy">Create credentials for ongoing access to the mirror remote.</p>
+                </div>
             </div>
 
             <div class="field">
-                <label class="label">Username</label>
+                <label class="label" for="username">Username</label>
                 <div class="control">
                     <input id="username" class="input" type="text" autocomplete="username" placeholder="joe">
                 </div>
@@ -27,25 +47,25 @@
             </div>
 
             <div class="field">
-                <label class="label">Password</label>
+                <label class="label" for="password">Password</label>
                 <div class="control">
                     <input id="password" class="input" type="password" autocomplete="new-password">
                 </div>
             </div>
 
             <div class="field">
-                <label class="label">Confirm password</label>
+                <label class="label" for="confirmPassword">Confirm password</label>
                 <div class="control">
                     <input id="confirmPassword" class="input" type="password" autocomplete="new-password">
                 </div>
             </div>
 
-            <p id="err" class="has-text-danger mb-3" style="display:none;"></p>
+            <p id="err" class="sr-status sr-status--danger sr-hidden"></p>
 
-            <button id="btn" class="button is-link is-fullwidth">Create account</button>
-        </div>
-    </div>
-</section>
+            <button id="btn" class="button is-link is-fullwidth" type="button">Create account</button>
+        </section>
+    </section>
+</main>
 
 <script src="./app.js"></script>
 <script src="./setup.js"></script>

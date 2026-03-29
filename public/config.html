@@ -8,94 +8,75 @@
     <link rel="stylesheet" href="./app.css">
 </head>
 <body class="sr-bg">
-<section class="section">
-    <div class="container">
-        <nav class="level mb-5">
-            <div class="level-left">
-                <div class="level-item">
-                    <h1 class="title is-4">Config editor</h1>
-                </div>
-            </div>
-            <div class="level-right">
-                <div class="level-item">
-                    <a class="button is-light" href="./dashboard">Dashboard</a>
-                </div>
-                <div class="level-item">
-                    <button id="logout" class="button is-light">Logout</button>
-                </div>
-            </div>
-        </nav>
-
-        <div class="columns">
-            <div class="column is-4">
-                <div class="box sr-box">
-                    <h2 class="title is-6">Modules</h2>
-                    <div class="sr-subhelp">Click a module to edit its <code>config</code>.</div>
-                    <div id="modules" class="mt-3"></div>
-                </div>
-            </div>
-
-            <div class="column">
-                <div class="box sr-box">
-                    <div class="level">
-                        <div class="level-left">
-                            <h2 id="pickedTitle" class="title is-6 level-item">Select a module</h2>
-                        </div>
-                        <div class="level-right">
-                            <div class="level-item">
-                                <div class="sr-tabs" id="tabs" style="display:none;">
-                                    <button id="tabForm" class="sr-tab sr-tab--active" type="button">Form</button>
-                                    <button id="tabJson" class="sr-tab" type="button">Advanced JSON</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="sr-subhelp mb-3" id="hint" style="display:none;">
-                        This editor replaces the module <code>config</code> object in <code>config.js</code>.
-                    </div>
-
-                    <!-- FORM EDITOR -->
-                    <div id="formPane" style="display:none;">
-                        <!-- SIMPLE EDITORS (module-specific) -->
-                        <div id="simplePane" style="display:none;"></div>
-
-                        <div class="level is-mobile mb-2">
-                            <div class="level-left"></div>
-                            <div class="level-right">
-                                <button id="addField" class="button is-small is-light" type="button">Add field</button>
-                            </div>
-                        </div>
-                        <div id="formWrap" class="sr-form"></div>
-                    </div>
-
-                    <!-- JSON EDITOR -->
-                    <div id="jsonPane" style="display:none;">
-                        <div class="field">
-                            <label class="label">Config JSON</label>
-                            <div class="control">
-                                <textarea id="json" class="textarea" rows="16" placeholder="Module config will appear here..."></textarea>
-                            </div>
-                            <p class="help">
-                                This is the full module config object (not a JSON patch).
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="buttons mt-4">
-                        <button id="load" class="button is-light" disabled>Reload</button>
-                        <button id="save" class="button is-link" disabled>Apply & refresh</button>
-                    </div>
-
-                    <p id="ok" class="has-text-success" style="display:none;">Saved. Mirror will refresh.</p>
-                    <p id="bad" class="has-text-danger" style="display:none;">Failed to save.</p>
-                    <pre id="details" class="mt-3" style="display:none;"></pre>
-                </div>
+<main class="sr-page sr-page--wide">
+    <header class="sr-header">
+        <div class="sr-header__meta">
+            <span class="sr-eyebrow">Configuration</span>
+            <div>
+                <h1 class="sr-title">Config editor</h1>
+                <p class="sr-intro">Edit module config safely with the form view or switch to raw JSON when you need more control.</p>
             </div>
         </div>
+        <div class="sr-header__actions">
+            <a class="button is-light" href="./dashboard">Dashboard</a>
+            <button id="logout" class="button is-light" type="button">Logout</button>
+        </div>
+    </header>
 
-    </div>
-</section>
+    <section class="sr-config-grid">
+        <aside class="sr-box">
+            <div class="sr-panel-head sr-panel-head--tight">
+                <div>
+                    <h2 class="sr-panel-title">Modules</h2>
+                    <p class="sr-panel-copy">Pick a module to edit its <code>config</code> object.</p>
+                </div>
+            </div>
+            <div id="modules" class="sr-modules"></div>
+        </aside>
+
+        <section class="sr-box">
+            <div class="sr-panel-head">
+                <div>
+                    <h2 id="pickedTitle" class="sr-panel-title">Select a module</h2>
+                    <p id="hint" class="sr-panel-copy sr-hidden">This editor replaces the module <code>config</code> object in <code>config.js</code>.</p>
+                </div>
+                <div id="tabs" class="sr-tabs sr-hidden">
+                    <button id="tabForm" class="sr-tab sr-tab--active" type="button">Form</button>
+                    <button id="tabJson" class="sr-tab" type="button">Advanced JSON</button>
+                </div>
+            </div>
+
+            <div id="formPane" class="sr-hidden">
+                <div id="simplePane" class="sr-hidden"></div>
+
+                <div class="sr-panel-head sr-panel-head--tight">
+                    <div></div>
+                    <button id="addField" class="button is-small is-light" type="button">Add field</button>
+                </div>
+                <div id="formWrap" class="sr-form"></div>
+            </div>
+
+            <div id="jsonPane" class="sr-hidden">
+                <div class="field">
+                    <label class="label" for="json">Config JSON</label>
+                    <div class="control">
+                        <textarea id="json" class="textarea" rows="16" placeholder="Module config will appear here..."></textarea>
+                    </div>
+                    <p class="help">This is the full module config object, not a JSON patch.</p>
+                </div>
+            </div>
+
+            <div class="buttons">
+                <button id="load" class="button is-light" type="button" disabled>Reload</button>
+                <button id="save" class="button is-link" type="button" disabled>Apply &amp; refresh</button>
+            </div>
+
+            <p id="ok" class="sr-status sr-status--success sr-hidden">Saved. Mirror will refresh.</p>
+            <p id="bad" class="sr-status sr-status--danger sr-hidden">Failed to save.</p>
+            <pre id="details" class="sr-hidden"></pre>
+        </section>
+    </section>
+</main>
 
 <script src="./app.js"></script>
 <script src="./config.js"></script>

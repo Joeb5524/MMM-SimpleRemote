@@ -1,5 +1,4 @@
 let picked = null;
-
 let pickedSchema = null;
 
 let currentConfig = {};
@@ -21,10 +20,9 @@ el("save").onclick = async () => {
     hideMsg();
     if (!picked) return;
 
-    const activeJson = isJsonTabActive();
     let nextConfig = null;
 
-    if (activeJson) {
+    if (isJsonTabActive()) {
         try {
             nextConfig = JSON.parse(el("json").value);
         } catch (e) {
@@ -51,8 +49,7 @@ el("save").onclick = async () => {
         syncJsonFromWorking();
         renderForm();
     } else {
-        const details = (res && res.json) ? res.json : null;
-        showBad("Save failed.", details);
+        showBad("Save failed.", (res && res.json) ? res.json : null);
     }
 };
 
@@ -100,15 +97,20 @@ function isJsonTabActive() {
     return el("tabJson").classList.contains("sr-tab--active");
 }
 
+function markActiveModule(moduleEl) {
+    document.querySelectorAll(".sr-mod.is-active").forEach((node) => node.classList.remove("is-active"));
+    if (moduleEl) moduleEl.classList.add("is-active");
+}
+
 async function init() {
     const res = await window.srFetch("/api/config/modules", { method: "GET" });
     if (!res || !res.ok || !res.json) return;
 
-    const list = res.json.modules || [];
+    const list = Array.isArray(res.json.modules) ? res.json.modules : [];
     const wrap = el("modules");
     wrap.innerHTML = "";
 
-    list.forEach(m => {
+    list.forEach((m) => {
         const div = document.createElement("div");
         div.className = "sr-mod";
         div.innerHTML = `
@@ -116,11 +118,12 @@ async function init() {
                 <div><strong>${escapeHtml(m.module)}</strong></div>
                 <div class="sr-chip">${escapeHtml(m.position || "")} #${m.index}</div>
             </div>
-            ${m.header ? `<div class="sr-mod__sub dimmed">${escapeHtml(m.header)}</div>` : ``}
+            ${m.header ? `<div class="sr-mod__sub">${escapeHtml(m.header)}</div>` : ``}
         `;
 
         div.onclick = async () => {
             picked = m;
+            markActiveModule(div);
             el("pickedTitle").textContent = `${m.module} (index ${m.index})`;
             setupEditorVisible();
             await loadPicked();
@@ -147,6 +150,7 @@ async function loadPicked() {
     workingConfig = deepClone(currentConfig);
 
     pickedSchema = await loadSchemaForPicked();
+    void pickedSchema;
 
     syncJsonFromWorking();
     renderForm();
@@ -154,7 +158,6 @@ async function loadPicked() {
 }
 
 function renderForm() {
-    // module-specific friendly editors
     if (renderSimpleEditorIfAvailable()) return;
 
     const wrap = el("formWrap");
@@ -165,7 +168,7 @@ function renderForm() {
     if (!keys.length) {
         const empty = document.createElement("div");
         empty.className = "sr-form__empty";
-        empty.textContent = "No config keys found for this module. Use “Add field” or Advanced JSON.";
+        empty.textContent = 'No config keys found for this module. Use "Add field" or Advanced JSON.';
         wrap.appendChild(empty);
         return;
     }
@@ -242,10 +245,8 @@ function renderSimpleEditorIfAvailable() {
     simple.style.display = "none";
     wrap.style.display = "block";
 
-
     el("addField").style.display = "inline-flex";
 
-    // user friendly editor
     if (picked && picked.module === "MMM-MedicationReminder") {
         el("addField").style.display = "none";
         wrap.style.display = "none";
@@ -298,7 +299,6 @@ function renderMedicationReminderEditor(host) {
 
     function renderRows() {
         tbody.innerHTML = "";
-
         cfg.medications = cfg.medications.map(ensureRowShape);
 
         if (!cfg.medications.length) {
@@ -315,7 +315,6 @@ function renderMedicationReminderEditor(host) {
         cfg.medications.forEach((m, idx) => {
             const tr = document.createElement("tr");
 
-            // name
             const tdName = document.createElement("td");
             const nameInput = document.createElement("input");
             nameInput.className = "input";
@@ -330,7 +329,6 @@ function renderMedicationReminderEditor(host) {
             tdName.appendChild(nameInput);
             tr.appendChild(tdName);
 
-            // dosage
             const tdDose = document.createElement("td");
             const doseInput = document.createElement("input");
             doseInput.className = "input";
@@ -345,7 +343,6 @@ function renderMedicationReminderEditor(host) {
             tdDose.appendChild(doseInput);
             tr.appendChild(tdDose);
 
-            // time
             const tdTime = document.createElement("td");
             const timeInput = document.createElement("input");
             timeInput.className = "input";
@@ -353,15 +350,13 @@ function renderMedicationReminderEditor(host) {
             timeInput.step = "60";
             timeInput.value = timeOk(m.time) ? m.time : "08:00";
             timeInput.oninput = () => {
-                const v = String(timeInput.value || "");
-                cfg.medications[idx].time = v;
+                cfg.medications[idx].time = String(timeInput.value || "");
                 workingConfig = cfg;
                 syncJsonFromWorking();
             };
             tdTime.appendChild(timeInput);
             tr.appendChild(tdTime);
 
-            // actions
             const tdAct = document.createElement("td");
             const del = document.createElement("button");
             del.type = "button";
@@ -412,7 +407,6 @@ function renderMedicationReminderEditor(host) {
     controls.appendChild(quick);
     host.appendChild(controls);
 
-    // Other settings
     const settings = document.createElement("div");
     settings.className = "mt-4";
     settings.innerHTML = `
@@ -423,8 +417,8 @@ function renderMedicationReminderEditor(host) {
 
     const friendly = [
         { key: "alertWindowMinutes", label: "Alert window (minutes)", help: "How early/late around the time it still counts as due." },
-        { key: "missedGraceMinutes", label: "Missed grace (minutes)", help: "How long before a due dose becomes ‘missed’." },
-        { key: "showRelative", label: "Show relative times", help: "Show ‘in 10 minutes’ style text if supported." },
+        { key: "missedGraceMinutes", label: "Missed grace (minutes)", help: 'How long before a due dose becomes "missed".' },
+        { key: "showRelative", label: "Show relative times", help: 'Show "in 10 minutes" style text if supported.' },
         { key: "maxItems", label: "Max items on screen", help: "Limit how many reminders to render at once." }
     ];
 
@@ -440,9 +434,7 @@ function renderMedicationReminderEditor(host) {
 
         const ctrl = document.createElement("div");
         ctrl.className = "control";
-
-        const input = buildInputForValue(key, cfg[key]);
-        ctrl.appendChild(input);
+        ctrl.appendChild(buildInputForValue(key, cfg[key]));
 
         const p = document.createElement("p");
         p.className = "help";
@@ -458,7 +450,6 @@ function renderMedicationReminderEditor(host) {
 }
 
 function buildInputForValue(key, val) {
-    // boolean
     if (typeof val === "boolean") {
         const wrap = document.createElement("label");
         wrap.className = "sr-toggle";
@@ -482,7 +473,6 @@ function buildInputForValue(key, val) {
         return wrap;
     }
 
-    // number
     if (typeof val === "number") {
         const input = document.createElement("input");
         input.className = "input";
@@ -502,7 +492,6 @@ function buildInputForValue(key, val) {
         return input;
     }
 
-    // arrays/objects
     if (val && typeof val === "object") {
         const ta = document.createElement("textarea");
         ta.className = "textarea";
@@ -520,7 +509,6 @@ function buildInputForValue(key, val) {
         ta.oninput = () => {
             try {
                 const parsed = JSON.parse(ta.value);
-                // allow arrays or objects only here
                 if (parsed && typeof parsed === "object") {
                     ta.classList.remove("sr-bad");
                     workingConfig[key] = parsed;
@@ -536,14 +524,12 @@ function buildInputForValue(key, val) {
         return wrap;
     }
 
-    // string
     const input = document.createElement("input");
     input.className = "input";
     input.type = "text";
     input.value = (val === null || val === undefined) ? "" : String(val);
 
     input.oninput = () => {
-        // Keep as string
         workingConfig[key] = input.value;
         syncJsonFromWorking();
     };
@@ -589,7 +575,7 @@ function showBad(msg, details) {
 }
 
 function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, m => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
+    return String(s).replace(/[&<>"']/g, (m) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[m]));
 }
 
 function deepClone(x) {

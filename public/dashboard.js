@@ -39,8 +39,16 @@ async function refreshAlerts() {
     const q = document.getElementById("queue");
     q.innerHTML = "";
 
-    const queue = res.json.queue || [];
-    queue.forEach(item => q.appendChild(renderAlertRow(item)));
+    const queue = Array.isArray(res.json.queue) ? res.json.queue : [];
+    if (!queue.length) {
+        const empty = document.createElement("p");
+        empty.className = "sr-empty-state";
+        empty.textContent = "No alerts in the queue.";
+        q.appendChild(empty);
+        return;
+    }
+
+    queue.forEach((item) => q.appendChild(renderAlertRow(item)));
 }
 
 function renderAlertRow(item) {
@@ -91,13 +99,20 @@ const pending = new Map();
 
 btnLights.onclick = async () => {
     hueType = "light";
+    updateHueTypeButtons();
     await refreshHue();
 };
 
 btnGroups.onclick = async () => {
     hueType = "grouped_light";
+    updateHueTypeButtons();
     await refreshHue();
 };
+
+function updateHueTypeButtons() {
+    btnLights.classList.toggle("is-selected", hueType === "light");
+    btnGroups.classList.toggle("is-selected", hueType === "grouped_light");
+}
 
 function setHueError(msg) {
     if (!msg) {
@@ -115,12 +130,12 @@ async function refreshHueStatus() {
 
     if (!res.json.configured) {
         hueStatusEl.textContent = "Not configured";
-        hueStatusEl.className = "tag is-warning is-light level-item";
+        hueStatusEl.className = "tag is-warning is-light";
         return;
     }
 
     hueStatusEl.textContent = `OK (${String(res.json.api || "").toUpperCase()})`;
-    hueStatusEl.className = "tag is-success is-light level-item";
+    hueStatusEl.className = "tag is-success is-light";
 }
 
 async function refreshHue() {
@@ -163,7 +178,10 @@ function renderHueList() {
     hueListEl.innerHTML = "";
 
     if (!hueItems.length) {
-        hueListEl.textContent = "No Hue items.";
+        const empty = document.createElement("p");
+        empty.className = "sr-empty-state";
+        empty.textContent = "No Hue items.";
+        hueListEl.appendChild(empty);
         return;
     }
 
@@ -340,6 +358,7 @@ btnMic.onclick = async () => {
 };
 
 async function init() {
+    updateHueTypeButtons();
     await refreshAlerts();
     await refreshHueStatus();
     await refreshHue();
@@ -348,7 +367,6 @@ async function init() {
 init();
 setInterval(refreshAlerts, 4000);
 setInterval(refreshHue, 6000);
-
 
 // --- Care alerts (from mirror) ---
 const careListEl = document.getElementById("careList");
@@ -380,11 +398,8 @@ function renderCareRow(item) {
     const careMetaParts = [ts];
     if (item.device) careMetaParts.push(item.device);
     if (item.acknowledgedAt) careMetaParts.push("ack");
-    const dev = item.device ? ` • ${item.device}` : "";
-    const ack = item.acknowledgedAt ? " • ack" : "";
-    meta.textContent = `${ts}${dev}${ack}`;
-
     meta.textContent = careMetaParts.filter(Boolean).join(" | ");
+
     left.appendChild(title);
     left.appendChild(meta);
 
@@ -427,7 +442,7 @@ async function refreshCareAlerts() {
         careListEl.innerHTML = "";
         if (!items.length) {
             const p = document.createElement("p");
-            p.className = "help";
+            p.className = "sr-empty-state";
             p.textContent = "No care alerts.";
             careListEl.appendChild(p);
             return;
@@ -452,7 +467,6 @@ if (careListEl) {
     setInterval(refreshCareAlerts, 2500);
 }
 
-
 // --- Audio call (WebRTC) ---
 const rtcStatusEl = document.getElementById("rtcStatus");
 const rtcErrEl = document.getElementById("rtcErr");
@@ -466,8 +480,7 @@ const rtcState = {
     iceSince: 0,
     iceTimer: null,
     answerTimer: null,
-    pendingLocalIce: [],
-    incomingOffer: null
+    pendingLocalIce: []
 };
 
 function setRtcError(msg) {
@@ -484,7 +497,7 @@ function setRtcError(msg) {
 function setRtcStatus(text, isActive) {
     if (!rtcStatusEl) return;
     rtcStatusEl.textContent = text || "Idle";
-    rtcStatusEl.className = `tag level-item ${isActive ? "is-success" : "is-light"}`;
+    rtcStatusEl.className = `tag ${isActive ? "is-success" : "is-light"}`;
 }
 
 function safePlayAudio(el) {
@@ -501,16 +514,13 @@ function renderRtcSessionRow(item) {
     t.className = "sr-row-title";
     const who = item.caller === "mirror" ? "Mirror" : "Carer";
     t.textContent = `${who} call (${item.state || "ringing"})`;
-    const rtcMetaParts = [item.createdAt ? new Date(item.createdAt).toLocaleString() : ""];
-    if (item.device) rtcMetaParts.push(item.device);
 
     const meta = document.createElement("div");
     meta.className = "sr-row-meta";
-    const ts = item.createdAt ? new Date(item.createdAt).toLocaleString() : "";
-    const dev = item.device ? ` • ${item.device}` : "";
-    meta.textContent = `${ts}${dev}`;
-
+    const rtcMetaParts = [item.createdAt ? new Date(item.createdAt).toLocaleString() : ""];
+    if (item.device) rtcMetaParts.push(item.device);
     meta.textContent = rtcMetaParts.filter(Boolean).join(" | ");
+
     left.appendChild(t);
     left.appendChild(meta);
 
@@ -540,7 +550,6 @@ async function refreshRtc() {
     if (!rtcListEl) return;
     try {
         setRtcError(null);
-        setRtcStatus("Calling...", false);
         const res = await window.srFetch("/api/rtc/sessions", { method: "GET" });
         if (!res || !res.ok || !res.json) return;
 
@@ -550,7 +559,7 @@ async function refreshRtc() {
         rtcListEl.innerHTML = "";
         if (!active.length) {
             const empty = document.createElement("p");
-            empty.className = "help";
+            empty.className = "sr-empty-state";
             empty.textContent = "No active calls.";
             rtcListEl.appendChild(empty);
             if (!rtcState.sessionId) setRtcStatus("Idle", false);
@@ -611,24 +620,19 @@ async function callMirrorRtc() {
 
         setRtcError(null);
         setRtcStatus("Calling...", false);
-        setRtcStatus("Calling…", false);
-
-        setRtcStatus("Calling...", false);
         const pc = await createPeerConnectionCarer();
 
-        let stream = null;
         try {
-            stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
             rtcState.localStream = stream;
             stream.getTracks().forEach((t) => pc.addTrack(t, stream));
         } catch (e) {
-            // Listen-only fallback.
             pc.addTransceiver("audio", { direction: "recvonly" });
             setRtcError("Microphone blocked - answering in listen-only mode.");
-            setRtcError("Microphone blocked — answering in listen-only mode.");
         }
 
         if (!rtcState.localStream) setRtcError("Microphone blocked - answering in listen-only mode.");
+
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
@@ -645,17 +649,14 @@ async function callMirrorRtc() {
 
         rtcState.sessionId = String(res.json.sessionId);
 
-
-        const pending = Array.isArray(rtcState.pendingLocalIce) ? rtcState.pendingLocalIce : [];
+        const pendingCandidates = Array.isArray(rtcState.pendingLocalIce) ? rtcState.pendingLocalIce : [];
         rtcState.pendingLocalIce = [];
-        for (const c of pending) {
+        for (const c of pendingCandidates) {
             await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(rtcState.sessionId)}/ice`, {
                 method: "POST",
                 body: JSON.stringify({ candidate: c })
             });
         }
-
-        setRtcStatus("Ringing…", false);
 
         setRtcStatus("Ringing...", false);
         rtcState.answerTimer = setInterval(async () => pollAnswer(rtcState.sessionId), 900);
@@ -705,9 +706,6 @@ async function answerRtc(sessionId) {
 
         setRtcError(null);
         setRtcStatus("Answering...", false);
-        setRtcStatus("Answering…", false);
-
-        setRtcStatus("Answering...", false);
         const offerRes = await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(sessionId)}/offer`, { method: "GET" });
         if (!offerRes || !offerRes.ok || !offerRes.json || !offerRes.json.offer) {
             setRtcError("No offer found.");
@@ -716,18 +714,17 @@ async function answerRtc(sessionId) {
 
         const pc = await createPeerConnectionCarer();
 
-        let stream = null;
         try {
-            stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
             rtcState.localStream = stream;
             stream.getTracks().forEach((t) => pc.addTrack(t, stream));
         } catch (e) {
             pc.addTransceiver("audio", { direction: "recvonly" });
             setRtcError("Microphone blocked - listen-only.");
-            setRtcError("Microphone blocked — listen-only.");
         }
 
         if (!rtcState.localStream) setRtcError("Microphone blocked - listen-only.");
+
         await pc.setRemoteDescription(offerRes.json.offer);
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
@@ -743,9 +740,9 @@ async function answerRtc(sessionId) {
             return;
         }
 
-        const pending = Array.isArray(rtcState.pendingLocalIce) ? rtcState.pendingLocalIce : [];
+        const pendingCandidates = Array.isArray(rtcState.pendingLocalIce) ? rtcState.pendingLocalIce : [];
         rtcState.pendingLocalIce = [];
-        for (const c of pending) {
+        for (const c of pendingCandidates) {
             await window.srFetch(`/api/rtc/sessions/${encodeURIComponent(sessionId)}/ice`, {
                 method: "POST",
                 body: JSON.stringify({ candidate: c })

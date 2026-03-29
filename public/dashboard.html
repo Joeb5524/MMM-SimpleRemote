@@ -6,186 +6,126 @@
     <title>Mirror Remote Dashboard</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.3/css/bulma.min.css">
     <link rel="stylesheet" href="./app.css">
-    <style>
-        .sr-hue-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-            gap: 12px;
-        }
-        .sr-hue-card {
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 10px;
-            padding: 12px;
-            background: rgba(255,255,255,0.03);
-            cursor: pointer;
-        }
-        .sr-hue-card.is-pending { opacity: 0.7; }
-        .sr-hue-title {
-            display: flex;
-            justify-content: space-between;
-            gap: 10px;
-            margin-bottom: 8px;
-            font-weight: 700;
-        }
-        .sr-hue-meta {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 10px;
-            opacity: 0.85;
-        }
-        .sr-hue-dot {
-            width: 14px;
-            height: 14px;
-            border-radius: 999px;
-            border: 1px solid rgba(255,255,255,0.35);
-            display: inline-block;
-        }
-        .sr-hue-controls {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-        }
-        .sr-hue-controls-left {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .sr-hue-controls input[type="color"] {
-            width: 40px;
-            height: 30px;
-            padding: 0;
-            border: none;
-            background: transparent;
-        }
-        .sr-hue-controls input[type="range"] {
-            width: 110px;
-        }
-        .sr-row { display:flex; align-items:center; justify-content:space-between; padding: .5rem 0; border-bottom: 1px solid #eee; gap: .75rem; }
-        .sr-row:last-child { border-bottom: 0; }
-        .sr-row-title { font-weight: 600; }
-        .sr-row-meta { font-size: .85rem; opacity: .75; }
-        .sr-row-actions { display:flex; gap: .5rem; flex-wrap: wrap; justify-content:flex-end; }
-    </style>
 </head>
 <body class="sr-bg">
-<section class="section">
-    <div class="container">
-        <nav class="level mb-5">
-            <div class="level-left">
-                <div class="level-item">
-                    <h1 class="title is-4">Mirror Remote</h1>
-                </div>
+<main class="sr-page sr-page--wide">
+    <header class="sr-header">
+        <div class="sr-header__meta">
+            <span class="sr-eyebrow">Control Centre</span>
+            <div>
+                <h1 class="sr-title">Mirror Remote</h1>
+                <p class="sr-intro">Send alerts, handle care notifications, manage calls and control Hue devices from one calmer dashboard.</p>
             </div>
-            <div class="level-right">
-                <div class="level-item">
-                    <a class="button is-light" href="./config">Config editor</a>
+        </div>
+        <div class="sr-header__actions">
+            <a class="button is-light" href="./config">Config editor</a>
+            <button id="logout" class="button is-light" type="button">Logout</button>
+        </div>
+    </header>
+
+    <section class="sr-dashboard-grid">
+        <div class="sr-stack">
+            <article class="sr-box">
+                <div class="sr-panel-head">
+                    <div>
+                        <h2 class="sr-panel-title">Send alert</h2>
+                        <p class="sr-panel-copy">Push a clear message straight to the mirror display.</p>
+                    </div>
                 </div>
-                <div class="level-item">
-                    <button id="logout" class="button is-light">Logout</button>
+
+                <div class="field">
+                    <label class="label" for="title">Title</label>
+                    <div class="control">
+                        <input id="title" class="input" type="text" placeholder="Medication reminder">
+                    </div>
                 </div>
+
+                <div class="field">
+                    <label class="label" for="message">Message</label>
+                    <div class="control">
+                        <textarea id="message" class="textarea" rows="6" placeholder="Type the alert text..."></textarea>
+                    </div>
+                </div>
+
+                <button id="send" class="button is-link is-fullwidth" type="button">Send to mirror</button>
+
+                <p id="sent" class="sr-status sr-status--success sr-hidden">Sent.</p>
+                <p id="sendErr" class="sr-status sr-status--danger sr-hidden">Failed.</p>
+            </article>
+        </div>
+
+        <div class="sr-stack">
+            <article class="sr-box">
+                <div class="sr-panel-head">
+                    <div>
+                        <h2 class="sr-panel-title">Queue</h2>
+                        <p class="sr-panel-copy">Review alerts waiting on the mirror and clear them when needed.</p>
+                    </div>
+                    <button id="clear" class="button is-danger is-light" type="button">Clear all</button>
+                </div>
+
+                <div id="queue" class="sr-list"></div>
+            </article>
+
+            <article class="sr-box">
+                <div class="sr-panel-head">
+                    <div>
+                        <h2 class="sr-panel-title">Care alerts</h2>
+                        <p class="sr-panel-copy">Incoming alerts raised from the mirror.</p>
+                    </div>
+                    <div class="sr-action-group">
+                        <button id="careRefresh" class="button is-light" type="button">Refresh</button>
+                        <button id="careClear" class="button is-danger is-light" type="button">Clear all</button>
+                    </div>
+                </div>
+
+                <p id="careErr" class="sr-status sr-status--danger sr-hidden"></p>
+                <div id="careList" class="sr-list"></div>
+            </article>
+
+            <article class="sr-box">
+                <div class="sr-panel-head">
+                    <div>
+                        <div class="sr-action-row">
+                            <h2 class="sr-panel-title">Audio call</h2>
+                            <span id="rtcStatus" class="tag is-light">Idle</span>
+                        </div>
+                        <p class="sr-panel-copy">Start, answer or end the mirror audio session.</p>
+                    </div>
+                    <div class="sr-action-group">
+                        <button id="rtcCall" class="button is-primary is-light" type="button">Call mirror</button>
+                        <button id="rtcRefresh" class="button is-light" type="button">Refresh</button>
+                        <button id="rtcHangup" class="button is-danger is-light" type="button">Hang up</button>
+                    </div>
+                </div>
+
+                <p id="rtcErr" class="sr-status sr-status--danger sr-hidden"></p>
+                <audio id="rtcRemoteAudio" autoplay playsinline></audio>
+                <div id="rtcList" class="sr-list sr-section-spacer"></div>
+            </article>
+        </div>
+    </section>
+
+    <section class="sr-box sr-section-spacer">
+        <div class="sr-panel-head">
+            <div>
+                <div class="sr-action-row">
+                    <h2 class="sr-panel-title">Hue</h2>
+                    <span id="hueStatus" class="tag is-light">Loading...</span>
+                </div>
+                <p class="sr-panel-copy">Tap a card to toggle. Voice examples: "lights on", "lights off", "set lights red".</p>
             </div>
-        </nav>
-
-        <div class="columns is-multiline">
-            <div class="column is-5">
-                <div class="box sr-box">
-                    <h2 class="title is-5">Send alert</h2>
-
-                    <div class="field">
-                        <label class="label">Title</label>
-                        <div class="control">
-                            <input id="title" class="input" type="text" placeholder="Medication reminder">
-                        </div>
-                    </div>
-
-                    <div class="field">
-                        <label class="label">Message</label>
-                        <div class="control">
-                            <textarea id="message" class="textarea" rows="6" placeholder="Type the alert text..."></textarea>
-                        </div>
-                    </div>
-
-                    <button id="send" class="button is-link is-fullwidth">Send to mirror</button>
-
-                    <p id="sent" class="has-text-success mt-3" style="display:none;">Sent.</p>
-                    <p id="sendErr" class="has-text-danger mt-3" style="display:none;">Failed.</p>
-                </div>
-            </div>
-
-            <div class="column is-7">
-                <div class="box sr-box">
-                    <div class="level">
-                        <div class="level-left">
-                            <h2 class="title is-5 level-item">Queue</h2>
-                        </div>
-                        <div class="level-right">
-                            <button id="clear" class="button is-danger is-light level-item">Clear all</button>
-                        </div>
-                    </div>
-
-                    <div id="queue"></div>
-                </div>
-
-                <div class="box sr-box mt-5">
-                    <div class="level">
-                        <div class="level-left">
-                            <h2 class="title is-5 level-item">Care alerts (from mirror)</h2>
-                        </div>
-                        <div class="level-right">
-                            <button id="careRefresh" class="button is-light level-item">Refresh</button>
-                            <button id="careClear" class="button is-danger is-light level-item">Clear all</button>
-                        </div>
-                    </div>
-                    <p id="careErr" class="help is-danger" style="display:none"></p>
-                    <div id="careList"></div>
-                </div>
-
-                <div class="box sr-box mt-5">
-                    <div class="level">
-                        <div class="level-left">
-                            <h2 class="title is-5 level-item">Audio call</h2>
-                            <span id="rtcStatus" class="tag level-item is-light">Idle</span>
-                        </div>
-                        <div class="level-right">
-                            <button id="rtcCall" class="button is-primary is-light level-item">Call mirror</button>
-                            <button id="rtcRefresh" class="button is-light level-item">Refresh</button>
-                            <button id="rtcHangup" class="button is-danger is-light level-item">Hang up</button>
-                        </div>
-                    </div>
-
-                    <p id="rtcErr" class="help is-danger" style="display:none"></p>
-                    <audio id="rtcRemoteAudio" autoplay playsinline></audio>
-                    <div id="rtcList" class="mt-2"></div>
-                </div>
+            <div class="sr-filter-group">
+                <button id="hueTypeLights" class="button is-small is-light" type="button">Lights</button>
+                <button id="hueTypeGroups" class="button is-small is-light" type="button">Rooms</button>
+                <button id="hueMic" class="button is-small is-light" type="button">Mic</button>
             </div>
         </div>
 
-        <div class="box sr-box mt-5">
-            <div class="level">
-                <div class="level-left">
-                    <h2 class="title is-5 level-item">Hue</h2>
-                    <span id="hueStatus" class="tag is-light level-item">Loading...</span>
-                </div>
-                <div class="level-right">
-                    <div class="buttons">
-                        <button id="hueTypeLights" class="button is-small is-light">Lights</button>
-                        <button id="hueTypeGroups" class="button is-small is-light">Rooms</button>
-                        <button id="hueMic" class="button is-small is-light">Mic</button>
-                    </div>
-                </div>
-            </div>
-
-            <p class="mb-3">
-                Tap a card to toggle. Voice examples: "lights on", "lights off", "set lights red".
-            </p>
-
-            <div id="hueErr" class="notification is-danger is-light" style="display:none;"></div>
-            <div id="hueList" class="sr-hue-grid"></div>
-        </div>
-    </div>
-</section>
+        <div id="hueErr" class="sr-status sr-status--danger sr-hidden"></div>
+        <div id="hueList" class="sr-hue-grid"></div>
+    </section>
+</main>
 
 <script src="./app.js"></script>
 <script src="./dashboard.js"></script>
