@@ -52,7 +52,8 @@ Module.register("MMM-SimpleRemote", {
 
     getDom() {
         const wrapper = document.createElement("div");
-        wrapper.className = "sr-root";
+        wrapper.className = this.config.dismissOnTouch ? "sr-root sr-root--dismissable" : "sr-root";
+        wrapper.setAttribute("aria-live", "assertive");
 
         if (!this.active) {
             wrapper.style.display = "none";
@@ -61,25 +62,42 @@ Module.register("MMM-SimpleRemote", {
 
         const card = document.createElement("div");
         card.className = "sr-card";
+        card.setAttribute("role", "alert");
+
+        const header = document.createElement("div");
+        header.className = "sr-header";
+
+        const badge = document.createElement("div");
+        badge.className = "sr-badge";
+        badge.textContent = "Remote alert";
+        header.appendChild(badge);
+
+        if (this.config.showTimestamp && this.active.createdAt) {
+            const meta = document.createElement("div");
+            meta.className = "sr-meta dimmed";
+            meta.textContent = this._formatTimestamp(this.active.createdAt);
+            header.appendChild(meta);
+        }
 
         const title = document.createElement("div");
-        title.className = "sr-title";
+        title.className = "sr-title bright";
         title.textContent = this.active.title || "Alert";
 
         const body = document.createElement("div");
-        body.className = "sr-body";
+        body.className = "sr-body normal";
         body.textContent = this.active.message || "";
 
-        const meta = document.createElement("div");
-        meta.className = "sr-meta";
-
-        if (this.config.showTimestamp && this.active.createdAt) {
-            meta.textContent = new Date(this.active.createdAt).toLocaleString();
-        }
-
+        card.appendChild(header);
         card.appendChild(title);
         card.appendChild(body);
-        card.appendChild(meta);
+
+        if (this.config.dismissOnTouch) {
+            const hint = document.createElement("div");
+            hint.className = "sr-hint dimmed";
+            hint.textContent = "Tap anywhere to dismiss";
+            card.appendChild(hint);
+        }
+
         wrapper.appendChild(card);
 
         if (this.config.dismissOnTouch) {
@@ -130,5 +148,18 @@ Module.register("MMM-SimpleRemote", {
         }
 
         this._lastActiveId = currentId;
+    },
+
+    _formatTimestamp(value) {
+        const date = new Date(value);
+
+        if (Number.isNaN(date.getTime())) return "";
+
+        return date.toLocaleString([], {
+            day: "numeric",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit"
+        });
     }
 });
